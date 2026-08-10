@@ -1,65 +1,85 @@
-# gm_8bit
-A module for manipulating voice data in Garry's Mod.
+# gmsv_eightbit 2.0.2
 
-# What does it do?
-gm_8bit is designed to be a starting point for any kind of voice stream manipulation you might want to do on a Garry's Mod server (or any source engine server, with a bit of adjustment).
+Серверный бинарный модуль для обработки голосовых пакетов Garry's Mod. Клиентам модуль и файлы пресетов не нужны: сервер отправляет им обычные `svc_VoiceData` пакеты.
 
-gm_8bit can decompress and recompress steam voice packets. It includes an SV_BroadcastVoiceData hook to allow server operators to incercept and manipulate this voice data. It makes several things possible, including:
-* Relaying server voice data to external locations
-* Performing voice recognition and producing transcripts
-* Recording voice data in compressed or uncompressed form
-* Applying transformation to user voice streams, for example pitch correction, noise suppression, or gain control.
+## Поддерживаемые серверы
 
-# Changed:
-Added many voice presets, reworked sv_broadcastdata. Fixed many bugs introduced by Garry's Mod updates.
+| Сервер | Файл |
+|---|---|
+| Windows x86 | `gmsv_eightbit_win32.dll` |
+| Windows x86-64 | `gmsv_eightbit_win64.dll` |
+| Linux x86 | `gmsv_eightbit_linux.dll` |
+| Linux x86-64 | `gmsv_eightbit_linux64.dll` |
 
+Нужный файл помещается только на сервер в `garrysmod/lua/bin/`. Lua загружает его через `require("eightbit")`.
 
-# API
-`eightbit.EnableBroadcast(bool)` Sets whether the module should relay voice packets to `localhost:4000`.
+## Раздельный голос для каждого слушателя
 
-`eightbit.SetBroadcastIP(string)` Controls what IP the module should relay voice packets to, if broadcast is enabled.
+Модуль маршрутизирует голос после стандартной проверки `PlayerCanHearPlayersVoice`. Для одной пары «слушатель — говорящий» можно отправить изменённый пакет, а всем остальным — исходный пакет.
 
-`eightbit.SetBroadcastPort(number)` Controls what port the module should relay voice packets to, if broadcast is enabled.
+```lua
+require("eightbit")
 
-`eightbit.EnableEffect(userid, number)` Sets whether to enable audio effect for a given userid. Takes an eightbit.EFF enum.
+-- Во время звонка A слышит B и B слышит A через телефон.
+eightbit.SetReceiverEffect(a:UserID(), b:UserID(), eightbit.EFF_TELEPHONE)
+eightbit.SetReceiverEffect(b:UserID(), a:UserID(), eightbit.EFF_TELEPHONE)
 
-`eightbit.SetGainFactor(number)` Sets the gain multiplier to apply to affected userids.
+-- Стоящий рядом третий игрок не имеет такого маршрута и слышит обычный голос.
 
-`eightbit.SetCrushFactor(number)` Sets the bitcrush factor for the reference bitcrush implementation.
+-- Завершение звонка.
+eightbit.ClearReceiverEffect(a:UserID(), b:UserID())
+eightbit.ClearReceiverEffect(b:UserID(), a:UserID())
+```
 
-`eightbit.SetDesampleRate(number)` Sets the desample multiplier, used by EFF_DESAMPLE.
+`EnableEffect(speakerUserId, effectId)` сохранён для совместимости: он задаёт эффект говорящего по умолчанию для всех слушателей. `SetReceiverEffect` имеет приоритет над ним; `EFF_NONE` принудительно оставляет голос чистым для конкретной пары.
 
-`eightbit.EFF_NONE` No audio effect.
+При отключении игрока вызывайте `ClearPlayer(userId)`. `ClearAllRoutes()` очищает все парные маршруты. `SetShouldHearEffect(listener, speaker, false)` принудительно оставляет пару без эффекта, а `true` снова наследует эффект говорящего по умолчанию.
 
-`eightbit.EFF_DESAMPLE` Bitcrush, hight pass, low pass filter. Radio effect.
+## Серверные пресеты
 
-`eightbit.EFF_BITCRUSH` Distortion, high pass low pass filter, voice of the elite squad of cleaners.
+Модуль читает `*.gvox` из `garrysmod/data/gvox/presets/`. Обновлённый gVOX получает файлы через Lua-поиск `DATA` и передаёт их содержимое прямо модулю, поэтому загрузка не зависит от рабочей папки процесса `srcds`. Формат декларативный `key=value`: произвольный C++/C# код из `data` намеренно не компилируется и не исполняется.
 
-`eightbit.EFF_COMB`       Applies a combine filter, ring modulation, and pitch shifting. Produces a metallic, resonant, low-pitched voice with a �subharmonic� character.
+```ini
+version=1
+name=Field Radio
+description=Clear military radio with light static
+gain=1.0
+highpass_hz=720
+lowpass_hz=3300
+drive=1.45
+clip=0.82
+pitch=1.0
+ring_frequency_hz=0
+ring_mix=0
+echo_delay_ms=1.4
+echo_mix=0.12
+noise=0.006
+quantize=260
+downsample=2
+soft_clip=false
+```
 
-`eightbit.EFF_DARTHVADER` Lowers the pitch by averaging adjacent samples and adds a heavy low?frequency rumble. Creates a deep, menacing voice reminiscent of a certain Sith Lord.
+Поддерживаемые поля: `name`, `description`, `key`, `gain`, `highpass_hz`, `lowpass_hz`, `drive`, `clip`, `pitch`, `ring_frequency_hz`, `ring_mix`, `echo_delay_ms`, `echo_mix`, `noise`, `quantize`, `downsample`, `soft_clip`. Неизвестные поля игнорируются для прямой совместимости формата.
 
-`eightbit.EFF_RADIO`      Adds a short slapback delay (echo) followed by heavy quantization. Emulates the sound of a crackling, low?fidelity walkie?talkie.
+Идентификатор пользовательского пресета стабильно вычисляется из имени файла и лежит в диапазоне 1000–65534. Так как Garry's Mod не разрешает расширение `.gvox` в стандартном `file.Write`, server-side аддоны создают такие файлы через `eightbit.WritePresetFile(fileName, content)`. После создания файлов вызовите Lua-хук `gVOXPresetsChanged`; обновлённый gVOX перечитает каталог автоматически.
 
-`eightbit.EFF_ROBOT`      Lowers pitch significantly and layers a doubled, slightly distorted signal. Produces a classic monotone robotic voice.
+## Lua API
 
-`eightbit.EFF_ALIEN`      Raises pitch with a fast vibrato, adds a faint doubling effect, and cuts low frequencies. Results in a thin, warbling, extraterrestrial?like voice.
+- `EnableEffect(speakerUserId, effectId)` — общий эффект говорящего.
+- `SetReceiverEffect(listenerUserId, speakerUserId, effectId)` — эффект только для пары.
+- `ClearReceiverEffect(listenerUserId, speakerUserId)` — убрать парное переопределение.
+- `GetReceiverEffect(listenerUserId, speakerUserId)` — эффективный ID для пары.
+- `SetShouldHearEffect(listenerUserId, speakerUserId, bool)` — принудительно чистый голос либо наследование общего эффекта.
+- `ClearPlayer(userId)`, `ClearAllRoutes()` — очистка состояния.
+- `WritePresetFile(fileName, content)` — безопасно проверить и создать `.gvox` в серверной папке пресетов.
+- `ReloadPresets([directory])` — перечитать пресеты.
+- `GetPresets()`, `GetPresetName(id)`, `IsValidPreset(id)`, `GetPresetDirectory()` — каталог пресетов.
+- `IsHookAvailable()` — найден ли голосовой хук текущего движка.
+- `GetVersion()` — версия модуля.
+- Старые `EnableBroadcast`, `SetBroadcastIP`, `SetBroadcastPort`, `SetGainFactor`, `SetCrushFactor`, `GetCrushFactor`, `SetDesampleRate` сохранены.
 
-`eightbit.EFF_OVERDRIVE`  Applies aggressive soft?clipping (tanh) with high pre?gain and a short, dirty delay. Gives the voice a thick, saturated, tube?amp overdrive character.
+Встроенные эффекты имеют прежние ID 0–14. Новые маршруты используют UserID, не EntityIndex.
 
-`eightbit.EFF_DISTORTION` Heavy, hard?clipping distortion with high gain. Creates a raw, �fuzzy� sound similar to a fuzz pedal.
+## Сборка
 
-`eightbit.EFF_TELEPHONE`  Band?pass filters (500?Hz � 3.2?kHz), moderate bit?crushing, and occasional signal glitches. Mimics the narrow bandwidth and artifacts of a traditional phone line.
-
-`eightbit.EFF_MEGAPHONE`  Aggressive band?pass filtering, a short metallic slapback, and hard limiting. Produces the strained, hollow sound of a public address megaphone.
-
-`eightbit.EFF_CHIPMUNK`   Speeds up the audio by skipping every other sample, raising pitch roughly one octave. Creates the familiar �chipmunk� high?pitched voice.
-
-`eightbit.EFF_SLOWMOTION` Slows down the audio by repeating each sample, lowering pitch by about one octave. Gives a deep, stretched, �slow?motion� effect.
-
-`Eightbit.EFF_COMBO` is a hybrid of ring modulation, soft limiting, comb filtering, and bandpass filtering. Creates a "Metrocop" effect.
-
-# Edited by "RG Studio" and "Quantum Ocean" projects
-
-### Original module - https://github.com/Meachamp/gm_8bit
-### The module taken as a base - https://github.com/Devinsideer/gm_8bit2
+Проект переведён на generator v2 `garrysmod_common`, платформы `x86`/`x86_64` и отдельные библиотеки `opus/lib32`/`opus/lib64`. Для Linux x86 `libopus.a` собран с PIC. Linux Release-сборки рассчитаны на glibc 2.17 и новее.

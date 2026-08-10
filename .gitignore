@@ -8,6 +8,14 @@ obj/
 *.a
 *.lib
 *.pdb
+*.obj
+*.exe
+
+# prebuilt Opus libraries required by premake5.lua
+!opus/lib32/*.a
+!opus/lib32/*.lib
+!opus/lib64/*.a
+!opus/lib64/*.lib
 
 # OS/editor
 .DS_Store
@@ -17,3 +25,4 @@ Thumbs.db
 
 # temporary
 *.log
+*.zip

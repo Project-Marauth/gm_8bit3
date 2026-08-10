@@ -22,7 +22,7 @@ Net::Net() {
 		throw "Initialization Error!";
 
 	m_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	if (m_socket == INVALID_SOCKET)
+	if (m_socket == static_cast<std::uintptr_t>(INVALID_SOCKET))
 		throw "Invalid socket!";
 #elif __linux
 	m_socket = socket(AF_INET, SOCK_DGRAM, 0);
@@ -41,7 +41,7 @@ void Net::SendPacket(const char* dest, uint16_t port, const char* buffer, uint32
 
 Net::~Net() {
 #ifdef _WIN32
-	closesocket(m_socket);
+	closesocket(static_cast<SOCKET>(m_socket));
 	WSACleanup();
 #elif __linux
 	close(m_socket);

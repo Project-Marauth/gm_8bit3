@@ -8,5 +8,9 @@ public:
 	void SendPacket(const char* dest, uint16_t port, const char* buffer, uint32_t len);
 
 private:
+#ifdef _WIN32
+	std::uintptr_t m_socket;
+#else
 	int m_socket;
+#endif
 };
