@@ -125,8 +125,10 @@ int Render(int argc, char** argv) {
 } // namespace
 
 int main(int argc, char** argv) {
-	if (argc >= 2 && std::strcmp(argv[1], "list") == 0) { std::cout << GvoxWriter::Catalogue() << "
-"; return 0; }
+	if (argc >= 2 && std::strcmp(argv[1], "list") == 0) {
+		std::cout << GvoxWriter::Catalogue() << "\n";
+		return 0;
+	}
 	if (argc >= 2 && std::strcmp(argv[1], "render") == 0) return Render(argc, argv);
 	std::cerr << "usage: voicelab list | voicelab render <in.wav> <out.wav> <stage>...\n";
 	return 2;
