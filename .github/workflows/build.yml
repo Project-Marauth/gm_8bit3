@@ -54,13 +54,12 @@ jobs:
       # Premake needs the runner's new glibc, but the DLLs must not: srcds loads
       # them against the game host's own libc and libstdc++ (Debian 12 on the
       # Pelican yolks image ships glibc 2.36 and GLIBCXX 3.4.30). Compiling in
-      # Debian 11 keeps every symbol at glibc 2.31 / GLIBCXX 3.4.28 or older.
-      - name: Build in Debian 11
+      # Ubuntu 20.04 keeps every symbol at glibc 2.31 / GLIBCXX 3.4.28 or older.
+      - name: Build in Ubuntu 20.04
         run: |
-          docker run --rm -v "$PWD:$PWD" -w "$PWD/projects/linux/gmake" debian:bullseye bash -euc '
-            dpkg --add-architecture i386
+          docker run --rm -v "$PWD:$PWD" -w "$PWD/projects/linux/gmake" ubuntu:20.04 bash -euc '
             apt-get update -qq
-            apt-get install -y -qq build-essential g++-multilib make > /dev/null
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential g++-multilib make > /dev/null
             make config=releasewithsymbols_x86_64 gmsv_eightbit -j"$(nproc)"
             make config=releasewithsymbols_x86 gmsv_eightbit -j"$(nproc)"
           '
