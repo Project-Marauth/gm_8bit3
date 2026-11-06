@@ -593,9 +593,9 @@ inline Preset MakeBuiltin(int id, float legacyGain, int legacyCrush, int legacyD
 		break;
 	case EFF_LOUDHAILER:
 		p.key = "loudhailer"; p.name = "Loudhailer";
-		p.description = "Handheld megaphone: honking horn resonance, driven driver and an outdoor slapback";
-		p.drive = 3.4f; p.softClip = true; p.clip = 0.8f; p.gain = 1.5f;
-		p.compressThresholdDb = -22.0f; p.compressRatio = 5.0f; p.compressMakeupDb = 6.0f;
+		p.description = "Handheld megaphone: honking horn resonance, a driver pushed into saturation, squashed to full level and an outdoor slapback";
+		p.drive = 6.0f; p.softClip = true; p.clip = 0.95f; p.gain = 4.0f;
+		p.compressThresholdDb = -32.0f; p.compressRatio = 12.0f; p.compressMakeupDb = 16.0f;
 		p.bandLowHz = 520.0f; p.bandHighHz = 4200.0f; p.bandOrder = 2;
 		p.peakHz[0] = 1700.0f; p.peakDb[0] = 8.0f; p.peakQ[0] = 2.0f;
 		p.peakHz[1] = 3100.0f; p.peakDb[1] = 3.0f; p.peakQ[1] = 3.0f;
