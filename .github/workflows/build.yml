@@ -51,11 +51,37 @@ jobs:
       - name: Generate project
         run: ./premake5 --gmcommon=garrysmod_common gmake2
 
-      - name: Build 64-bit
-        run: cd projects/linux/gmake && make config=releasewithsymbols_x86_64 gmsv_eightbit -j"$(nproc)"
+      # Premake needs the runner's new glibc, but the DLLs must not: srcds loads
+      # them against the game host's own libc and libstdc++ (Debian 12 on the
+      # Pelican yolks image ships glibc 2.36 and GLIBCXX 3.4.30). Compiling in
+      # Debian 11 keeps every symbol at glibc 2.31 / GLIBCXX 3.4.28 or older.
+      - name: Build in Debian 11
+        run: |
+          docker run --rm -v "$PWD:$PWD" -w "$PWD/projects/linux/gmake" debian:bullseye bash -euc '
+            dpkg --add-architecture i386
+            apt-get update -qq
+            apt-get install -y -qq build-essential g++-multilib make > /dev/null
+            make config=releasewithsymbols_x86_64 gmsv_eightbit -j"$(nproc)"
+            make config=releasewithsymbols_x86 gmsv_eightbit -j"$(nproc)"
+          '
 
-      - name: Build 32-bit
-        run: cd projects/linux/gmake && make config=releasewithsymbols_x86 gmsv_eightbit -j"$(nproc)"
+      - name: Check glibc and libstdc++ requirements
+        run: |
+          status=0
+          for dll in $(find projects/linux/gmake -name 'gmsv_eightbit_linux*.dll'); do
+            glibc=$(objdump -T "$dll" | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sort -Vu | tail -1)
+            glibcxx=$(objdump -T "$dll" | grep -oE 'GLIBCXX_[0-9.]+' | sort -Vu | tail -1)
+            echo "$dll needs $glibc and $glibcxx"
+            if [ "$(printf '%s\n' "$glibc" GLIBC_2.31 | sort -V | tail -1)" != GLIBC_2.31 ]; then
+              echo "::error::$dll needs $glibc, newer than glibc 2.31"
+              status=1
+            fi
+            if [ -n "$glibcxx" ] && [ "$(printf '%s\n' "$glibcxx" GLIBCXX_3.4.28 | sort -V | tail -1)" != GLIBCXX_3.4.28 ]; then
+              echo "::error::$dll needs $glibcxx, newer than GLIBCXX 3.4.28"
+              status=1
+            fi
+          done
+          exit $status
 
       - uses: actions/upload-artifact@v4
         with:
