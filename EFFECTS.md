@@ -152,15 +152,23 @@ For reference, Valve's two beta metrocop actors, through Valve's own processing,
 
 ## Voice lab
 
-`tools/voicelab` auditions presets without building or loading the DLL. It compiles `tools/voicelab/voicelab.cpp` against this repository's own `source/` with a local C++17 compiler, so what it plays is the module's engine, packet by packet, not an imitation.
+`tools/voicelab` is for hearing and tuning voices without building or loading the DLL. It runs the module's own engine, compiled to WebAssembly (`engine.wasm`), inside the browser's audio thread, so changes are heard as you drag.
 
 ```sh
 python tools/voicelab/server.py
 ```
 
-Open http://127.0.0.1:8765, record a line or load an audio file, and build a chain from the built-in presets and layers. Every field of every stage has a slider; each change re-renders in under 100 ms and plays back, with a dry A/B, a spectrogram, and WAV download. "Copy .gvox" exports the stage as a preset file the server loads unchanged, and the renderer rebuilds itself when `source/audio_effects.h` changes, so engine edits can be heard the same way. Needs Python 3 and `g++` or `clang++` on the PATH (or `CXX`). The Opus round trip the server adds is not simulated.
+Open http://127.0.0.1:8765. Needs only Python 3 and a Chromium-based browser.
 
-The renderer also works on its own: `voicelab list` prints every built-in as `.gvox`, and `voicelab render in.wav out.wav builtin:16 my_radio.gvox` renders a chain over a 24 kHz mono 16-bit WAV.
+- **Live mic or clip.** Talk through the chain in real time (use headphones), or loop a recorded or loaded clip. Every slider applies instantly while it plays.
+- **Like in game.** Audio runs at 24 kHz. With push-to-talk the line is silent until `T` is held and every press is a new transmission (squelch, chirps); in open-mic mode a transmission starts whenever speech follows 350 ms of silence, as the server does. `K` keys up by hand.
+- **Compare.** Hold `B` for the dry voice. Store up to four whole chains as variants (`Shift`+`1`..`4`) and flip between them while listening (`1`..`4`). Load a reference recording and play it with `R`.
+- **Edit.** Controls are grouped in signal order, each with a short explanation on hover; a green dot marks the sections that currently change the sound, edited values are highlighted, double-click resets one, and `Ctrl`+`Z` undoes. Stages can be reordered, duplicated and bypassed.
+- **Keep.** Copy, download or save a stage to the library as `.gvox`; drop `.gvox` or audio files anywhere to import them. Export WAV renders the clip in 20 ms packets, as the server would.
+
+`engine.wasm` is committed, so the lab works without a compiler. After changing `source/audio_effects.h` or `source/preset_format.h`, rebuild it with `pip install ziglang` then `python tools/voicelab/build_wasm.py`; the server also rebuilds it on page load when `ziglang` is installed. The `.gvox` reader is `source/preset_format.h`, shared with the server module, so the lab reads a preset exactly as the server does. Output matches the native build to within math-library rounding; the Opus round trip the server adds is not simulated.
+
+`tools/voicelab/voicelab.cpp` is the same engine as a command-line renderer for scripts: `voicelab list` prints every built-in as `.gvox`, and `voicelab render in.wav out.wav builtin:16 my_radio.gvox` renders a chain over a 24 kHz mono 16-bit WAV.
 
 ## Performance
 
