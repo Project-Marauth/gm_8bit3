@@ -4,10 +4,12 @@
 #include "opus_framedecoder.h"
 #include "voice_presets.h"
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 struct EffectEncoderStream {
 	EffectEncoderStream() : codec(new SteamOpus::Opus_FrameDecoder()) {
@@ -15,7 +17,11 @@ struct EffectEncoderStream {
 	}
 
 	std::unique_ptr<SteamOpus::Opus_FrameDecoder> codec;
-	AudioEffects::RuntimeState runtime;
+	std::vector<AudioEffects::RuntimeState> stages;
+	std::vector<AudioEffects::Preset> chain;
+	uint32_t chainGeneration = 0;
+	std::chrono::steady_clock::time_point lastUsed;
+	bool bUsed = false;
 };
 
 struct SpeakerVoiceState {
@@ -43,5 +49,7 @@ struct EightbitState {
 
 	std::unordered_map<int, std::unique_ptr<SpeakerVoiceState>> speakers;
 	std::unordered_map<uint64_t, int> receiverEffects;
+	std::unordered_map<int, int> routesPerSpeaker;
+	uint32_t presetGeneration = 1;
 	VoicePresetRegistry presets;
 };
