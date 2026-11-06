@@ -1,0 +1,187 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+
+# Two pushes in quick succession would otherwise race to replace the rolling
+# `latest` release and could leave it holding the older build's binaries.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GARRYSMOD_COMMON_REF: 069a789df06d675d294961a20e8736aa070bd355
+  PREMAKE_VERSION: 5.0.0-beta6
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout garrysmod_common
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          repository: danielga/garrysmod_common
+          path: garrysmod_common
+          ref: ${{ env.GARRYSMOD_COMMON_REF }}
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc-multilib g++-multilib
+
+      - name: Install premake
+        run: |
+          curl -sL "https://github.com/premake/premake-core/releases/download/v${PREMAKE_VERSION}/premake-${PREMAKE_VERSION}-linux.tar.gz" -o premake.tar.gz
+          tar -xf premake.tar.gz
+          chmod +x premake5
+
+      - name: Test effects
+        run: |
+          g++ -std=c++17 -O2 -Isource tests/audio_effects_test.cpp -o audio_effects_test && ./audio_effects_test
+          g++ -std=c++17 -O2 -Isource tests/preset_registry_test.cpp source/voice_presets.cpp -o preset_registry_test && ./preset_registry_test tests/fixtures
+          g++ -std=c++17 -O2 -Isource tests/preset_write_test.cpp source/voice_presets.cpp -o preset_write_test && ./preset_write_test
+
+      - name: Generate project
+        run: ./premake5 --gmcommon=garrysmod_common gmake2
+
+      - name: Build 64-bit
+        run: cd projects/linux/gmake && make config=releasewithsymbols_x86_64 gmsv_eightbit -j"$(nproc)"
+
+      - name: Build 32-bit
+        run: cd projects/linux/gmake && make config=releasewithsymbols_x86 gmsv_eightbit -j"$(nproc)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gmsv_eightbit_linux
+          path: projects/linux/gmake/**/gmsv_eightbit_linux*.dll
+          if-no-files-found: error
+
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout garrysmod_common
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          repository: danielga/garrysmod_common
+          path: garrysmod_common
+          ref: ${{ env.GARRYSMOD_COMMON_REF }}
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install premake
+        shell: pwsh
+        run: |
+          curl.exe -sL "https://github.com/premake/premake-core/releases/download/v$env:PREMAKE_VERSION/premake-$env:PREMAKE_VERSION-windows.zip" -o premake.zip
+          tar -xf premake.zip
+
+      - name: Generate project
+        run: ./premake5.exe --gmcommon=garrysmod_common vs2022
+
+      - name: Build 64-bit
+        run: msbuild projects/windows/vs2022/eightbit.sln /m /p:Configuration=ReleaseWithSymbols /p:Platform=x64
+
+      - name: Build 32-bit
+        run: msbuild projects/windows/vs2022/eightbit.sln /m /p:Configuration=ReleaseWithSymbols /p:Platform=Win32
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gmsv_eightbit_windows
+          path: projects/windows/vs2022/**/gmsv_eightbit_win*.dll
+          if-no-files-found: error
+
+  # Publishes every build from main. The version string the module reports
+  # (eightbit.GetVersion) names a permanent release the first time it appears,
+  # and the rolling `latest` prerelease always holds the newest build, so there
+  # is a direct download link either way.
+  release:
+    needs: [ build-linux, build-windows ]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect binaries
+        run: |
+          mkdir -p dist
+          find artifacts -name 'gmsv_eightbit_*.dll' -exec cp {} dist/ \;
+          for name in gmsv_eightbit_win32.dll gmsv_eightbit_win64.dll \
+                      gmsv_eightbit_linux.dll gmsv_eightbit_linux64.dll; do
+            if [ ! -f "dist/$name" ]; then
+              echo "::error::$name is missing from the build artifacts"
+              exit 1
+            fi
+          done
+          ( cd dist && sha256sum gmsv_eightbit_*.dll > SHA256SUMS.txt )
+          ls -l dist
+
+      - name: Read module version
+        id: version
+        run: |
+          version=$(grep -oP 'eightbit_get_version\) \{ LUA->PushString\("\K[^"]+' source/main.cpp)
+          if [ -z "$version" ]; then
+            echo "::error::could not read the module version from source/main.cpp"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Write release notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          {
+            echo "gmsv_eightbit $VERSION, built from \`$GITHUB_SHA\`."
+            echo
+            git log -1 --pretty='### %s%n%n%b'
+            echo
+            echo 'Drop the DLL matching your server into `garrysmod/lua/bin/`, then `require("eightbit")`. Clients need nothing.'
+            echo
+            echo '| File | Platform |'
+            echo '| --- | --- |'
+            echo '| `gmsv_eightbit_win64.dll` | Windows x64 |'
+            echo '| `gmsv_eightbit_win32.dll` | Windows x86 |'
+            echo '| `gmsv_eightbit_linux64.dll` | Linux x86_64 |'
+            echo '| `gmsv_eightbit_linux.dll` | Linux x86 |'
+          } > notes.md
+
+      - name: Publish versioned release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if gh release view "v$VERSION" > /dev/null 2>&1; then
+            echo "v$VERSION already released; only the rolling build is updated"
+            exit 0
+          fi
+          gh release create "v$VERSION" dist/* \
+            --target "$GITHUB_SHA" \
+            --title "gmsv_eightbit $VERSION" \
+            --notes-file notes.md \
+            --latest
+
+      - name: Publish rolling build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest dist/* \
+            --target "$GITHUB_SHA" \
+            --title "Latest build (${GITHUB_SHA:0:7})" \
+            --notes-file notes.md \
+            --prerelease
