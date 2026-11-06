@@ -496,20 +496,22 @@ inline Preset MakeBuiltin(int id, float legacyGain, int legacyCrush, int legacyD
 		break;
 	case EFF_METROCOP_MODULATOR:
 		p.key = "metrocop_modulator"; p.name = "Metrocop modulator";
-		p.description = "Civil Protection mask: a 12-band vocoder that replaces the officer's pitch, timbre and formants, respirator honk, radio band, static on key-up";
-		p.vocoderMix = 1.0f; p.vocoderBands = 12; p.vocoderLowHz = 150.0f; p.vocoderHighHz = 4200.0f;
-		p.vocoderNoise = 0.45f; p.vocoderBuzz = 0.55f; p.vocoderSelf = 0.0f; p.vocoderBuzzHz = 96.0f;
-		p.vocoderAttackMs = 8.0f; p.vocoderReleaseMs = 30.0f;
-		p.vocoderFormant = 1.18f; p.vocoderFlatten = 1.0f; p.vocoderSmooth = 0.5f;
+		p.description = "Civil Protection mask: a 19-band vocoder on a buzz and noise carrier with lowered formants, respirator honk, radio band, static on key-up";
+		p.gain = 1.8f; p.pitch = 1.15f;
+		p.vocoderMix = 1.0f; p.vocoderBands = 19; p.vocoderLowHz = 150.0f; p.vocoderHighHz = 4200.0f; p.vocoderWidth = 0.81f;
+		p.vocoderAttackMs = 3.5f; p.vocoderReleaseMs = 11.0f;
+		p.vocoderNoise = 0.45f; p.vocoderBuzz = 0.55f; p.vocoderSelf = 0.27f; p.vocoderBuzzHz = 84.0f; p.vocoderGain = 0.44f;
+		p.vocoderFormant = 0.74f; p.vocoderFlatten = 0.54f; p.vocoderSmooth = 0.16f;
+		p.ringFrequency = 28.0f; p.ringMix = 0.08f;
 		p.tubeMs = 0.75f; p.tubeFeedback = 0.42f; p.tubeMix = 0.45f;
 		p.drive = 2.2f; p.softClip = true; p.quantize = 48;
 		p.compressThresholdDb = -26.0f; p.compressRatio = 6.0f; p.compressMakeupDb = 9.0f;
 		p.hiss = 0.006f; p.crackle = 0.12f;
+		p.squelchMs = 120.0f; p.squelchLevel = 0.09f;
 		p.bandLowHz = 340.0f; p.bandHighHz = 3200.0f; p.bandOrder = 2;
 		p.peakHz[0] = 1150.0f; p.peakDb[0] = 7.0f; p.peakQ[0] = 2.2f;
 		p.peakHz[1] = 2450.0f; p.peakDb[1] = 4.0f; p.peakQ[1] = 3.0f;
 		p.peakHz[2] = 650.0f; p.peakDb[2] = -3.0f; p.peakQ[2] = 1.0f;
-		p.squelchMs = 120.0f; p.squelchLevel = 0.09f; p.gain = 1.8f;
 		p.limit = true;
 		break;
 	case EFF_OVERWATCH_MODULATOR:
