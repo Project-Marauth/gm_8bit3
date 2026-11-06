@@ -516,22 +516,24 @@ inline Preset MakeBuiltin(int id, float legacyGain, int legacyCrush, int legacyD
 		break;
 	case EFF_OVERWATCH_MODULATOR:
 		p.key = "overwatch_modulator"; p.name = "Overwatch modulator";
-		p.description = "Overwatch soldier: a 10-band, mostly unpitched vocoder that leaves nothing of the speaker's own voice, heavily compressed, two-tone chirp on key-up";
-		p.vocoderMix = 1.0f; p.vocoderBands = 10; p.vocoderLowHz = 150.0f; p.vocoderHighHz = 4200.0f;
-		p.vocoderNoise = 0.65f; p.vocoderBuzz = 0.35f; p.vocoderSelf = 0.0f; p.vocoderBuzzHz = 82.0f;
-		p.vocoderAttackMs = 8.0f; p.vocoderReleaseMs = 30.0f;
-		p.vocoderFormant = 1.22f; p.vocoderFlatten = 1.0f; p.vocoderSmooth = 0.7f;
-		p.peakHz[2] = 2900.0f; p.peakDb[2] = -4.0f; p.peakQ[2] = 1.2f;
-		p.ringFrequency = 62.0f; p.ringMix = 0.08f;
-		p.tubeMs = 1.4f; p.tubeFeedback = 0.55f; p.tubeMix = 0.5f;
+		p.description = "Overwatch soldier: a 14-band vocoder over the voice's own harmonics, noise and a buzz, lowered formants, ring-modulated, heavily compressed, two-tone chirp on key-up";
+		p.gain = 1.4f; p.pitch = 1.06f;
+		p.vocoderMix = 1.0f; p.vocoderBands = 14; p.vocoderLowHz = 75.0f; p.vocoderHighHz = 5221.0f; p.vocoderWidth = 1.23f;
+		p.vocoderAttackMs = 14.7f; p.vocoderReleaseMs = 1.0f;
+		p.vocoderNoise = 0.47f; p.vocoderBuzz = 0.19f; p.vocoderSelf = 0.72f; p.vocoderBuzzHz = 108.0f; p.vocoderGain = 1.54f;
+		p.vocoderFormant = 0.73f; p.vocoderFlatten = 0.7f; p.vocoderSmooth = 0.38f;
+		p.ringFrequency = 51.0f; p.ringMix = 0.32f;
+		p.tubeMs = 11.1f; p.tubeFeedback = 0.67f; p.tubeMix = 0.38f;
 		p.drive = 3.0f; p.softClip = true; p.quantize = 160; p.downsample = 2;
 		p.compressThresholdDb = -28.0f; p.compressRatio = 8.0f; p.compressMakeupDb = 11.0f;
 		p.hiss = 0.004f;
+		p.squelchMs = 70.0f; p.squelchLevel = 0.05f;
+		p.chirpHz = 1750.0f; p.chirpMs = 55.0f; p.chirpLevel = 0.05f; p.chirpCount = 2;
 		p.bandLowHz = 280.0f; p.bandHighHz = 3400.0f; p.bandOrder = 2;
 		p.peakHz[0] = 900.0f; p.peakDb[0] = 6.0f; p.peakQ[0] = 2.0f;
 		p.peakHz[1] = 1900.0f; p.peakDb[1] = 5.0f; p.peakQ[1] = 2.5f;
-		p.squelchMs = 70.0f; p.squelchLevel = 0.05f; p.gain = 1.4f;
-		p.chirpHz = 1750.0f; p.chirpMs = 55.0f; p.chirpLevel = 0.05f; p.chirpCount = 2;
+		p.peakHz[2] = 2900.0f; p.peakDb[2] = -4.0f; p.peakQ[2] = 1.2f;
+		p.reverbSize = 0.13f; p.reverbDamp = 0.24f;
 		p.limit = true;
 		break;
 	case EFF_COMBINE_DISPATCH:
