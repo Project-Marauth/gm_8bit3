@@ -46,6 +46,8 @@ jobs:
       - name: Generate project
         run: ./premake5 --gmcommon=garrysmod_common gmake2
 
+      # 32-bit srcds ships tier0 as libtier0_srv.so (only 64-bit srcds has
+      # libtier0.so), so the 32-bit DLL's dependency is renamed after linking.
       # Premake needs the runner's new glibc, but the DLLs must not: srcds loads
       # them against the game host's own libc and libstdc++ (Debian 12 on the
       # Pelican yolks image ships glibc 2.36 and GLIBCXX 3.4.30). Compiling in
@@ -55,9 +57,10 @@ jobs:
           docker run --rm -v "$PWD:$PWD" -w "$PWD/projects/linux/gmake" ubuntu:20.04 bash -euc '
             rm -f /etc/apt/apt.conf.d/docker-clean
             apt-get update -qq
-            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends g++-multilib make > /dev/null
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends g++-multilib make patchelf > /dev/null
             make config=releasewithsymbols_x86_64 gmsv_eightbit -j"$(nproc)"
             make config=releasewithsymbols_x86 gmsv_eightbit -j"$(nproc)"
+            patchelf --replace-needed libtier0.so libtier0_srv.so x86/ReleaseWithSymbols/gmsv_eightbit_linux.dll
           '
 
       - name: Check glibc and libstdc++ requirements
@@ -76,6 +79,12 @@ jobs:
               status=1
             fi
           done
+          tier0=$(objdump -p projects/linux/gmake/x86/ReleaseWithSymbols/gmsv_eightbit_linux.dll | awk '/NEEDED/ && /tier0/ {print $2}')
+          echo "32-bit DLL links $tier0"
+          if [ "$tier0" != libtier0_srv.so ]; then
+            echo "::error::the 32-bit DLL must link libtier0_srv.so, the name 32-bit srcds ships; it links '$tier0'"
+            status=1
+          fi
           exit $status
 
       - uses: actions/upload-artifact@v4
