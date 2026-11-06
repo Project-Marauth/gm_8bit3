@@ -87,6 +87,9 @@ Every field is optional and off by default, so existing presets are unaffected.
 | `vocoder_attack_ms`, `vocoder_release_ms` | 0.1 to 50, 1 to 200 | How fast each band follows the voice |
 | `vocoder_noise`, `vocoder_buzz`, `vocoder_self`, `vocoder_buzz_hz` | 0 to 1 each, 20 to 1000 Hz | Carrier blend |
 | `vocoder_gain` | 0 to 8 | Vocoder output level |
+| `vocoder_formant` | 0.5 to 2 | Re-synthesise every band at a shifted frequency: moves formants independently of pitch |
+| `vocoder_flatten` | 0 to 1 | Level each band against its own slow average, removing the speaker's long-term timbre |
+| `vocoder_smooth` | 0 to 1 | Blur neighbouring bands, discarding fine formant detail |
 | `limit` | boolean | Soft output limiter |
 
 Signal order inside one preset: pitch, vocoder, wobble, one-pole filters, ring modulation, tube, downsample, drive, quantise, compressor, dropout, hiss/crackle/squelch/chirp, band and peaks, echo, reverb, white noise and gain, limiter.
@@ -120,7 +123,31 @@ The vocoder stage splits the voice into `vocoder_bands` log-spaced bands between
 - `vocoder_buzz`: a sawtooth at `vocoder_buzz_hz`. A monotone robot.
 - `vocoder_self`: the voice hard-clipped into a square wave. Follows the speaker's own pitch, so it stays expressive but gritty.
 
-Each carrier band is normalised by its own level, so switching carriers changes texture, not loudness. More bands and a short release keep words intelligible; fewer bands and a long release sound more machine. `vocoder_mix` blends the result over the dry voice: around 0.45 still sounds like a person in a mask (`EFF_METROCOP_MODULATOR`), 0.75 is the Overwatch soldier, 0.9 and up is `EFF_COMBINE_GRUNT`.
+Each carrier band is normalised by its own level, so switching carriers changes texture, not loudness. More bands and a short release keep words intelligible; fewer bands and a long release sound more machine. Bands are sixth-order Butterworth bandpasses with contiguous edges between `vocoder_low_hz` and `vocoder_high_hz`. Simpler bands were tried first and smeared words into noise.
+
+## Hiding who is talking (2.3.0)
+
+A mask should hide the person behind it. Identity survives a vocoder through four things, and the Combine presets remove each:
+
+| What gives a speaker away | What removes it |
+|---|---|
+| Any dry voice in the mix | `vocoder_mix=1` |
+| Pitch and intonation | A noise or fixed buzz carrier, never `vocoder_self` |
+| Formant positions (vocal tract size) | `vocoder_formant` |
+| Long-term timbre and fine formant detail | `vocoder_flatten`, `vocoder_smooth`, fewer bands |
+
+Measured on 58 LibriSpeech test-clean recordings from 12 speakers with an ECAPA-TDNN speaker-recognition model (SpeechBrain), which is far harder to fool than a human ear. "Link" is the equal error rate of matching a processed clip to the speaker's real voice, "same mask" of telling two masked speakers apart; 50% is a coin toss. "Words" is the word error rate of Whisper base.en, a pessimistic stand-in for a human listener on vocoded speech.
+
+| Preset | Link | Same mask | Words |
+|---|---|---|---|
+| Dry voice | 0% | 0% | 6% |
+| Metrocop modulator, 2.2.0 | 2% | 1% | 10% |
+| Metrocop modulator, 2.3.0 | 33% | 20% | 31% |
+| Overwatch modulator, 2.2.0 | 11% | 4% | 19% |
+| Overwatch modulator, 2.3.0 | 38% | 36% | 43% |
+| Combine grunt, 2.3.0 | 39% | 26% | 54% |
+
+For reference, Valve's two beta metrocop actors, through Valve's own processing, score 33.5% "same mask" against each other. Anonymity and intelligibility trade against each other: the metrocop keeps 12 bands so officers stay understandable in roleplay, Overwatch uses 10 and the grunt 8.
 
 ## Voice lab
 
