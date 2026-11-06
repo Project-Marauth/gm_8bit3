@@ -31,11 +31,6 @@ jobs:
           path: garrysmod_common
           ref: ${{ env.GARRYSMOD_COMMON_REF }}
 
-      - name: Install toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential gcc-multilib g++-multilib
-
       - name: Install premake
         run: |
           curl -sL "https://github.com/premake/premake-core/releases/download/v${PREMAKE_VERSION}/premake-${PREMAKE_VERSION}-linux.tar.gz" -o premake.tar.gz
@@ -58,8 +53,9 @@ jobs:
       - name: Build in Ubuntu 20.04
         run: |
           docker run --rm -v "$PWD:$PWD" -w "$PWD/projects/linux/gmake" ubuntu:20.04 bash -euc '
+            rm -f /etc/apt/apt.conf.d/docker-clean
             apt-get update -qq
-            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential g++-multilib make > /dev/null
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends g++-multilib make > /dev/null
             make config=releasewithsymbols_x86_64 gmsv_eightbit -j"$(nproc)"
             make config=releasewithsymbols_x86 gmsv_eightbit -j"$(nproc)"
           '
