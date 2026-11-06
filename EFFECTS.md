@@ -143,6 +143,7 @@ Measured on 58 LibriSpeech test-clean recordings from 12 speakers with an ECAPA-
 | Dry voice | 0% | 0% | 6% |
 | Metrocop modulator, 2.2.0 | 2% | 1% | 10% |
 | Metrocop modulator, 2.3.0 | 33% | 20% | 31% |
+| Metrocop modulator, 2.3.1 (hand-tuned in the voice lab, keeps a little own pitch) | 19% | 12% | 18% |
 | Overwatch modulator, 2.2.0 | 11% | 4% | 19% |
 | Overwatch modulator, 2.3.0 | 38% | 36% | 43% |
 | Combine grunt, 2.3.0 | 39% | 26% | 54% |
