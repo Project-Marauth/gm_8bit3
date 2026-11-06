@@ -1,4 +1,6 @@
-# gmsv_eightbit3 2.0.2
+# gmsv_eightbit3 2.1.0
+
+New in 2.1.0: realistic Combine modulators, masks, radios, megaphones, intercoms and other layered voices, plus prebuilt Windows and Linux DLLs on the [Releases](https://github.com/Project-Marauth/gm_8bit3/releases) page. See [EFFECTS.md](EFFECTS.md).
 
 Серверный бинарный модуль для обработки голосовых пакетов Garry's Mod. Клиентам модуль и файлы пресетов не нужны: сервер отправляет им обычные `svc_VoiceData` пакеты.
 
