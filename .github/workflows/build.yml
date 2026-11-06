@@ -42,6 +42,9 @@ jobs:
           g++ -std=c++17 -O2 -Isource tests/audio_effects_test.cpp -o audio_effects_test && ./audio_effects_test
           g++ -std=c++17 -O2 -Isource tests/preset_registry_test.cpp source/voice_presets.cpp -o preset_registry_test && ./preset_registry_test tests/fixtures
           g++ -std=c++17 -O2 -Isource tests/preset_write_test.cpp source/voice_presets.cpp -o preset_write_test && ./preset_write_test
+          g++ -std=c++17 -O2 -Isource tools/voicelab/voicelab.cpp source/voice_presets.cpp -o voicelab
+          ./voicelab list > presets.json
+          python3 -c "import json; d = json.load(open('presets.json')); assert len(d['presets']) > 27"
 
       - name: Generate project
         run: ./premake5 --gmcommon=garrysmod_common gmake2

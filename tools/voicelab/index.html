@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>eightbit voice lab</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root {
+	--bg: #0d0f12;
+	--ink: #e6e8eb;
+	--dim: #8a9099;
+	--faint: #2a2f36;
+	--accent: #6fb3ff;
+	--warn: #ff8a6f;
+	--mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body {
+	margin: 0;
+	background: radial-gradient(1200px 600px at 20% -10%, #18202b 0%, var(--bg) 60%);
+	color: var(--ink);
+	font: 14px/1.45 system-ui, "Segoe UI", sans-serif;
+	min-height: 100vh;
+}
+main { max-width: 1180px; margin: 0 auto; padding: 28px 24px 80px; }
+h1 {
+	margin: 0 0 4px;
+	font-weight: 500;
+	letter-spacing: 0.32em;
+	text-transform: uppercase;
+	font-size: 13px;
+}
+.sub { color: var(--dim); margin-bottom: 22px; }
+.rule { height: 1px; background: var(--faint); margin: 18px 0; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+button, select, .file {
+	background: transparent;
+	color: var(--ink);
+	border: 1px solid var(--faint);
+	border-radius: 999px;
+	padding: 7px 14px;
+	font: inherit;
+	cursor: pointer;
+}
+button:hover, select:hover, .file:hover { border-color: var(--dim); }
+button.primary { border-color: var(--accent); color: var(--accent); }
+button.live { border-color: var(--warn); color: var(--warn); }
+button:disabled { opacity: 0.4; cursor: default; }
+select option { background: var(--bg); }
+.file input { display: none; }
+.status { color: var(--dim); font-family: var(--mono); font-size: 12px; }
+.status.error { color: var(--warn); white-space: pre-wrap; }
+label.toggle { color: var(--dim); display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+canvas { width: 100%; height: 150px; display: block; border-radius: 6px; background: #07090b; }
+.label { color: var(--dim); font-size: 11px; letter-spacing: 0.24em; text-transform: uppercase; margin: 16px 0 8px; }
+.chain { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.stage {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 8px 6px 14px;
+	border-radius: 999px;
+	border: 1px solid var(--faint);
+	cursor: pointer;
+}
+.stage.selected { border-color: var(--accent); }
+.stage.bypassed { opacity: 0.45; text-decoration: line-through; }
+.stage .x { border: 0; padding: 0 6px; color: var(--dim); }
+.arrow { color: var(--faint); }
+.groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 6px 28px; }
+.group h3 {
+	font-weight: 500;
+	font-size: 11px;
+	letter-spacing: 0.24em;
+	text-transform: uppercase;
+	color: var(--dim);
+	margin: 18px 0 6px;
+}
+.field { display: grid; grid-template-columns: 150px 1fr 74px; gap: 10px; align-items: center; padding: 2px 0; }
+.field span { color: var(--dim); font-size: 12px; }
+.field.changed span { color: var(--ink); }
+.field input[type=range] { width: 100%; accent-color: var(--accent); }
+.field input[type=number] {
+	width: 74px;
+	background: transparent;
+	border: 0;
+	border-bottom: 1px solid var(--faint);
+	color: var(--ink);
+	font-family: var(--mono);
+	font-size: 12px;
+	text-align: right;
+}
+textarea {
+	width: 100%;
+	height: 220px;
+	background: #07090b;
+	color: var(--ink);
+	border: 1px solid var(--faint);
+	border-radius: 6px;
+	font-family: var(--mono);
+	font-size: 12px;
+	padding: 10px;
+}
+.hint { color: var(--dim); font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+	<h1>eightbit voice lab</h1>
+	<div class="sub">The module's own effect engine, 20 ms packets at 24 kHz, without the DLL. Opus is not simulated.</div>
+
+	<div class="row">
+		<button id="record">Record</button>
+		<label class="file">Load audio<input id="load" type="file" accept="audio/*"></label>
+		<label class="toggle"><input id="normalise" type="checkbox" checked> Normalise input</label>
+		<span id="source-status" class="status">No voice line yet. Record one or load a file.</span>
+	</div>
+
+	<div class="rule"></div>
+
+	<div class="row">
+		<button id="play" class="primary" disabled>Play processed</button>
+		<button id="dry" disabled>Play dry</button>
+		<button id="stop" disabled>Stop</button>
+		<label class="toggle"><input id="autoplay" type="checkbox" checked> Play after each change</label>
+		<label class="toggle"><input id="loop" type="checkbox"> Loop</label>
+		<button id="download" disabled>Download WAV</button>
+		<span id="render-status" class="status"></span>
+	</div>
+
+	<div class="label">Processed</div>
+	<canvas id="spectrum" width="1180" height="150"></canvas>
+
+	<div class="label">Chain (left to right, like a voice travelling to the listener)</div>
+	<div class="row">
+		<div id="chain" class="chain"></div>
+		<select id="add-preset"><option value="">+ Preset</option></select>
+		<select id="add-layer"><option value="">+ Layer</option></select>
+	</div>
+
+	<div id="editor"></div>
+</main>
+
+<script>
+const FIELDS = [
+	["Output", [
+		["gain", "Gain", 0, 4, 0.01], ["pitch", "Pitch", 0.5, 2, 0.01],
+		["soft_clip", "Soft clip", "bool"], ["limit", "Limiter", "bool"],
+	]],
+	["Vocoder", [
+		["vocoder_mix", "Mix", 0, 1, 0.01], ["vocoder_bands", "Bands", 4, 32, 1],
+		["vocoder_low_hz", "Lowest band Hz", 40, 2000, 1, "log"], ["vocoder_high_hz", "Highest band Hz", 600, 10000, 1, "log"],
+		["vocoder_width", "Band width", 0.25, 4, 0.01], ["vocoder_attack_ms", "Attack ms", 0.1, 50, 0.1],
+		["vocoder_release_ms", "Release ms", 1, 200, 1], ["vocoder_noise", "Carrier: noise", 0, 1, 0.01],
+		["vocoder_buzz", "Carrier: buzz", 0, 1, 0.01], ["vocoder_self", "Carrier: own voice", 0, 1, 0.01],
+		["vocoder_buzz_hz", "Buzz Hz", 20, 500, 1, "log"], ["vocoder_gain", "Vocoder gain", 0, 4, 0.01],
+	]],
+	["Modulation", [
+		["ring_frequency_hz", "Ring Hz", 0, 2000, 1, "log"], ["ring_mix", "Ring mix", 0, 1, 0.01],
+		["wobble_hz", "Wobble Hz", 0, 40, 0.1], ["wobble_ms", "Wobble depth ms", 0, 20, 0.1],
+	]],
+	["Mask cavity", [
+		["tube_ms", "Cavity ms", 0, 30, 0.05], ["tube_feedback", "Feedback", 0, 0.95, 0.01], ["tube_mix", "Mix", 0, 1, 0.01],
+	]],
+	["Distortion", [
+		["drive", "Drive", 0.05, 16, 0.05], ["clip", "Clip level", 0.05, 1, 0.01],
+		["quantize", "Quantise step", 0, 2000, 1], ["downsample", "Downsample", 1, 32, 1],
+	]],
+	["Dynamics", [
+		["compress_threshold_db", "Threshold dB", -60, 0, 0.5], ["compress_ratio", "Ratio", 1, 40, 0.1],
+		["compress_makeup_db", "Makeup dB", -24, 36, 0.5],
+	]],
+	["Channel noise", [
+		["hiss", "Hiss", 0, 0.25, 0.001], ["crackle", "Crackle", 0, 1, 0.01],
+		["dropout", "Dropouts", 0, 1, 0.01], ["noise", "White noise (late)", 0, 0.25, 0.001],
+	]],
+	["Key-up", [
+		["squelch_ms", "Squelch ms", 0, 1000, 1], ["squelch_level", "Squelch level", 0, 1, 0.01],
+		["chirp_hz", "Chirp Hz", 0, 8000, 1, "log"], ["chirp_ms", "Chirp ms", 0, 500, 1],
+		["chirp_level", "Chirp level", 0, 1, 0.01], ["chirp_count", "Chirps", 1, 4, 1],
+	]],
+	["Filters", [
+		["highpass_hz", "One-pole high-pass", 0, 11000, 1, "log"], ["lowpass_hz", "One-pole low-pass", 0, 11000, 1, "log"],
+		["band_low_hz", "Band low cut", 0, 11000, 1, "log"], ["band_high_hz", "Band high cut", 0, 11000, 1, "log"],
+		["band_order", "Band order", 1, 2, 1],
+		["peak1_hz", "Peak 1 Hz", 0, 11000, 1, "log"], ["peak1_db", "Peak 1 dB", -24, 24, 0.5], ["peak1_q", "Peak 1 Q", 0.1, 24, 0.1],
+		["peak2_hz", "Peak 2 Hz", 0, 11000, 1, "log"], ["peak2_db", "Peak 2 dB", -24, 24, 0.5], ["peak2_q", "Peak 2 Q", 0.1, 24, 0.1],
+		["peak3_hz", "Peak 3 Hz", 0, 11000, 1, "log"], ["peak3_db", "Peak 3 dB", -24, 24, 0.5], ["peak3_q", "Peak 3 Q", 0.1, 24, 0.1],
+	]],
+	["Room", [
+		["echo_delay_ms", "Echo ms", 0, 500, 0.1], ["echo_mix", "Echo mix", 0, 0.95, 0.01],
+		["reverb_mix", "Reverb mix", 0, 1, 0.01], ["reverb_size", "Reverb size", 0, 1, 0.01], ["reverb_damp", "Reverb damping", 0, 1, 0.01],
+	]],
+];
+const SLIDER_STEPS = 1000;
+const STORAGE_KEY = "eightbit.voicelab";
+
+const state = {
+	catalogue: null,
+	stages: [],
+	selected: -1,
+	dryWav: null,
+	dryBuffer: null,
+	processedBlob: null,
+	processedBuffer: null,
+	source: null,
+	renderToken: 0,
+	renderTimer: 0,
+};
+const audio = new AudioContext();
+const $ = (id) => document.getElementById(id);
+
+/** Parses .gvox text into a field map. */
+function parseGvox(text) {
+	const values = {};
+	for (const line of text.split(/\r?\n/)) {
+		const at = line.indexOf("=");
+		if (at < 0 || line.trim().startsWith("#")) continue;
+		const key = line.slice(0, at).trim();
+		const value = line.slice(at + 1).trim();
+		values[key] = value === "true" ? true : value === "false" ? false : isNaN(Number(value)) ? value : Number(value);
+	}
+	return values;
+}
+
+/** Serialises a stage back to .gvox text the module accepts. */
+function toGvox(stage) {
+	const lines = ["version=1", `name=${stage.name}`];
+	if (stage.values.description) lines.push(`description=${stage.values.description}`);
+	for (const [, fields] of FIELDS) {
+		for (const [key] of fields) {
+			if (key in stage.values) lines.push(`${key}=${stage.values[key]}`);
+		}
+	}
+	return lines.join("\n") + "\n";
+}
+
+/** Builds a fresh stage from a built-in preset id. */
+function stageFromPreset(id) {
+	const preset = state.catalogue.presets[id];
+	return { name: preset.name, base: id, values: parseGvox(preset.gvox), bypass: false };
+}
+
+/** Maps a slider position to a value, logarithmically for frequency fields, with position 0 meaning off when the range starts at 0. */
+function sliderToValue(field, position) {
+	const [, , min, max, step, scale] = field;
+	if (scale !== "log") return roundStep(min + (max - min) * position / SLIDER_STEPS, step);
+	if (position === 0 && min === 0) return 0;
+	const low = Math.max(min, 20);
+	return roundStep(low * Math.pow(max / low, position / SLIDER_STEPS), step);
+}
+
+function valueToSlider(field, value) {
+	const [, , min, max, , scale] = field;
+	if (scale !== "log") return Math.round((value - min) / (max - min) * SLIDER_STEPS);
+	if (value <= 0) return 0;
+	const low = Math.max(min, 20);
+	return Math.round(Math.log(Math.max(value, low) / low) / Math.log(max / low) * SLIDER_STEPS);
+}
+
+function roundStep(value, step) {
+	const rounded = Math.round(value / step) * step;
+	return Number(rounded.toFixed(step < 1 ? String(step).split(".")[1].length : 0));
+}
+
+/** Redraws the chain chips. */
+function drawChain() {
+	const chain = $("chain");
+	chain.innerHTML = "";
+	if (state.stages.length === 0) chain.innerHTML = '<span class="hint">Empty chain: the voice plays dry.</span>';
+	state.stages.forEach((stage, index) => {
+		if (index > 0) chain.insertAdjacentHTML("beforeend", '<span class="arrow">&rarr;</span>');
+		const chip = document.createElement("span");
+		chip.className = "stage" + (index === state.selected ? " selected" : "") + (stage.bypass ? " bypassed" : "");
+		chip.textContent = stage.name;
+		chip.onclick = () => { state.selected = index; drawChain(); drawEditor(); };
+		const remove = document.createElement("button");
+		remove.className = "x";
+		remove.textContent = "×";
+		remove.title = "Remove stage";
+		remove.onclick = (event) => {
+			event.stopPropagation();
+			state.stages.splice(index, 1);
+			state.selected = Math.min(state.selected, state.stages.length - 1);
+			changed();
+		};
+		chip.appendChild(remove);
+		chain.appendChild(chip);
+	});
+}
+
+/** Redraws the parameter editor for the selected stage. */
+function drawEditor() {
+	const editor = $("editor");
+	editor.innerHTML = "";
+	const stage = state.stages[state.selected];
+	if (!stage) return;
+
+	const base = parseGvox(state.catalogue.presets[stage.base].gvox);
+	const header = document.createElement("div");
+	header.className = "row";
+	header.style.marginTop = "18px";
+	header.innerHTML = `<input id="stage-name" value="${stage.name.replace(/"/g, "&quot;")}" style="background:transparent;border:0;border-bottom:1px solid var(--faint);color:var(--ink);font:inherit;font-size:16px;width:280px">`;
+	const buttons = [
+		["Bypass", () => { stage.bypass = !stage.bypass; changed(); }],
+		[`Reset to ${state.catalogue.presets[stage.base].name}`, () => { Object.assign(stage, stageFromPreset(stage.base)); changed(true); }],
+		["Copy .gvox", () => navigator.clipboard.writeText(toGvox(stage))],
+		["Show .gvox", () => { const area = $("gvox-text"); area.hidden = !area.hidden; area.value = toGvox(stage); }],
+	];
+	for (const [text, action] of buttons) {
+		const button = document.createElement("button");
+		button.textContent = text;
+		button.onclick = action;
+		header.appendChild(button);
+	}
+	editor.appendChild(header);
+
+	const area = document.createElement("textarea");
+	area.id = "gvox-text";
+	area.hidden = true;
+	area.title = "Edit and leave the field to apply";
+	area.onchange = () => { Object.assign(stage.values, parseGvox(area.value)); changed(true); };
+	editor.appendChild(area);
+
+	$("stage-name").onchange = (event) => { stage.name = event.target.value || "Custom"; drawChain(); saveSession(); };
+
+	const groups = document.createElement("div");
+	groups.className = "groups";
+	for (const [title, fields] of FIELDS) {
+		const group = document.createElement("div");
+		group.className = "group";
+		group.innerHTML = `<h3>${title}</h3>`;
+		for (const field of fields) group.appendChild(fieldRow(stage, field, base));
+		groups.appendChild(group);
+	}
+	editor.appendChild(groups);
+}
+
+/** One labelled control bound to a stage field. */
+function fieldRow(stage, field, base) {
+	const [key, label, min, max, step] = field;
+	const row = document.createElement("div");
+	row.className = "field" + (stage.values[key] !== base[key] ? " changed" : "");
+	row.title = key;
+	const name = document.createElement("span");
+	name.textContent = label;
+	row.appendChild(name);
+
+	if (min === "bool") {
+		const box = document.createElement("input");
+		box.type = "checkbox";
+		box.checked = !!stage.values[key];
+		box.onchange = () => { stage.values[key] = box.checked; row.classList.toggle("changed", box.checked !== base[key]); changed(); };
+		row.appendChild(box);
+		return row;
+	}
+
+	const slider = document.createElement("input");
+	slider.type = "range";
+	slider.min = 0;
+	slider.max = SLIDER_STEPS;
+	slider.value = valueToSlider(field, stage.values[key] ?? min);
+	const number = document.createElement("input");
+	number.type = "number";
+	number.step = step;
+	number.value = stage.values[key] ?? min;
+	const set = (value) => {
+		stage.values[key] = value;
+		row.classList.toggle("changed", value !== base[key]);
+		changed();
+	};
+	slider.oninput = () => { const value = sliderToValue(field, Number(slider.value)); number.value = value; set(value); };
+	number.onchange = () => {
+		const value = Math.min(max, Math.max(min, Number(number.value)));
+		number.value = value;
+		slider.value = valueToSlider(field, value);
+		set(value);
+	};
+	row.append(slider, number);
+	return row;
+}
+
+/** Called after any edit: redraws, saves and schedules a render. */
+function changed(redrawEditor) {
+	drawChain();
+	if (redrawEditor) drawEditor();
+	saveSession();
+	clearTimeout(state.renderTimer);
+	state.renderTimer = setTimeout(renderNow, 250);
+}
+
+/** Posts the dry line and the active chain to the local renderer. */
+async function renderNow() {
+	if (!state.dryWav) return;
+	const token = ++state.renderToken;
+	$("render-status").className = "status";
+	$("render-status").textContent = "rendering...";
+	const started = performance.now();
+	const stages = state.stages.filter((stage) => !stage.bypass).map((stage) => ({ gvox: toGvox(stage) }));
+	const response = await fetch("/api/render", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ wav: await toBase64(state.dryWav), stages }),
+	});
+	if (token !== state.renderToken) return;
+	if (!response.ok) {
+		$("render-status").className = "status error";
+		$("render-status").textContent = (await response.json()).error;
+		return;
+	}
+	state.processedBlob = await response.blob();
+	state.processedBuffer = await audio.decodeAudioData(await state.processedBlob.arrayBuffer());
+	$("render-status").textContent = `rendered in ${Math.round(performance.now() - started)} ms`;
+	for (const id of ["play", "download"]) $(id).disabled = false;
+	drawSpectrum(state.processedBuffer);
+	if ($("autoplay").checked) play(state.processedBuffer);
+}
+
+function play(buffer) {
+	if (!buffer) return;
+	stop();
+	audio.resume();
+	const source = audio.createBufferSource();
+	source.buffer = buffer;
+	source.loop = $("loop").checked;
+	source.connect(audio.destination);
+	source.start();
+	state.source = source;
+	$("stop").disabled = false;
+}
+
+function stop() {
+	if (state.source) {
+		try { state.source.stop(); } catch (error) { }
+		state.source = null;
+	}
+}
+
+/** Draws a log-frequency spectrogram so band layout, carrier noise and squelch are visible as well as audible. */
+function drawSpectrum(buffer) {
+	const canvas = $("spectrum");
+	const context = canvas.getContext("2d");
+	const data = buffer.getChannelData(0);
+	const size = 512;
+	const hop = Math.max(128, Math.floor(data.length / canvas.width));
+	const columns = Math.floor((data.length - size) / hop);
+	const image = context.createImageData(canvas.width, canvas.height);
+	const window = new Float32Array(size).map((_, i) => 0.5 - 0.5 * Math.cos(2 * Math.PI * i / size));
+	const real = new Float32Array(size);
+	const imag = new Float32Array(size);
+	const nyquist = buffer.sampleRate / 2;
+	for (let x = 0; x < canvas.width; x++) {
+		const column = Math.floor(x * columns / canvas.width);
+		for (let i = 0; i < size; i++) { real[i] = (data[column * hop + i] || 0) * window[i]; imag[i] = 0; }
+		fft(real, imag);
+		for (let y = 0; y < canvas.height; y++) {
+			const hz = 60 * Math.pow(nyquist / 60, 1 - y / canvas.height);
+			const bin = Math.min(size / 2 - 1, Math.round(hz / nyquist * size / 2));
+			const magnitude = Math.hypot(real[bin], imag[bin]);
+			const level = Math.max(0, Math.min(1, (20 * Math.log10(magnitude + 1e-9) + 30) / 60));
+			const offset = (y * canvas.width + x) * 4;
+			image.data[offset] = 40 + level * 70;
+			image.data[offset + 1] = 60 + level * 120;
+			image.data[offset + 2] = 80 + level * 175;
+			image.data[offset + 3] = 255 * level;
+		}
+	}
+	context.clearRect(0, 0, canvas.width, canvas.height);
+	context.putImageData(image, 0, 0);
+}
+
+function fft(real, imag) {
+	const n = real.length;
+	for (let i = 1, j = 0; i < n; i++) {
+		let bit = n >> 1;
+		for (; j & bit; bit >>= 1) j ^= bit;
+		j ^= bit;
+		if (i < j) { [real[i], real[j]] = [real[j], real[i]]; [imag[i], imag[j]] = [imag[j], imag[i]]; }
+	}
+	for (let length = 2; length <= n; length <<= 1) {
+		const angle = -2 * Math.PI / length;
+		for (let i = 0; i < n; i += length) {
+			for (let k = 0; k < length / 2; k++) {
+				const cos = Math.cos(angle * k), sin = Math.sin(angle * k);
+				const a = i + k, b = i + k + length / 2;
+				const tr = real[b] * cos - imag[b] * sin, ti = real[b] * sin + imag[b] * cos;
+				real[b] = real[a] - tr; imag[b] = imag[a] - ti;
+				real[a] += tr; imag[a] += ti;
+			}
+		}
+	}
+}
+
+/** Resamples any decoded audio to the 24 kHz mono 16-bit WAV the module works on. */
+async function toVoiceWav(arrayBuffer) {
+	const decoded = await audio.decodeAudioData(arrayBuffer);
+	const length = Math.ceil(decoded.duration * 24000);
+	const offline = new OfflineAudioContext(1, length, 24000);
+	const source = offline.createBufferSource();
+	source.buffer = decoded;
+	source.connect(offline.destination);
+	source.start();
+	const rendered = await offline.startRendering();
+	const samples = rendered.getChannelData(0);
+	let peak = 0;
+	for (const value of samples) peak = Math.max(peak, Math.abs(value));
+	const scale = $("normalise").checked && peak > 0 ? 0.6 / peak : 1;
+	const pcm = new Int16Array(samples.length);
+	for (let i = 0; i < samples.length; i++) pcm[i] = Math.max(-32768, Math.min(32767, samples[i] * scale * 32767));
+	return encodeWav(pcm, 24000);
+}
+
+function encodeWav(pcm, rate) {
+	const buffer = new ArrayBuffer(44 + pcm.length * 2);
+	const view = new DataView(buffer);
+	const text = (offset, value) => [...value].forEach((c, i) => view.setUint8(offset + i, c.charCodeAt(0)));
+	text(0, "RIFF"); view.setUint32(4, 36 + pcm.length * 2, true); text(8, "WAVEfmt ");
+	view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+	view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true); view.setUint16(32, 2, true);
+	view.setUint16(34, 16, true); text(36, "data"); view.setUint32(40, pcm.length * 2, true);
+	new Int16Array(buffer, 44).set(pcm);
+	return new Blob([buffer], { type: "audio/wav" });
+}
+
+function toBase64(blob) {
+	return new Promise((resolve) => {
+		const reader = new FileReader();
+		reader.onload = () => resolve(reader.result.split(",")[1]);
+		reader.readAsDataURL(blob);
+	});
+}
+
+/** Installs a new dry voice line and renders it. */
+async function useVoice(wav, label) {
+	state.dryWav = wav;
+	state.dryBuffer = await audio.decodeAudioData(await wav.arrayBuffer());
+	$("source-status").textContent = `${label}: ${state.dryBuffer.duration.toFixed(1)} s at 24 kHz`;
+	$("dry").disabled = false;
+	try { localStorage.setItem(STORAGE_KEY + ".voice", await toBase64(wav)); } catch (error) { }
+	renderNow();
+}
+
+let recorder = null;
+
+/** Starts or stops a microphone recording with browser voice processing turned off. */
+async function toggleRecording() {
+	if (recorder) { recorder.stop(); return; }
+	const stream = await navigator.mediaDevices.getUserMedia({
+		audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+	});
+	const chunks = [];
+	recorder = new MediaRecorder(stream);
+	recorder.ondataavailable = (event) => chunks.push(event.data);
+	recorder.onstop = async () => {
+		stream.getTracks().forEach((track) => track.stop());
+		recorder = null;
+		$("record").textContent = "Record";
+		$("record").classList.remove("live");
+		const blob = new Blob(chunks);
+		useVoice(await toVoiceWav(await blob.arrayBuffer()), "Recording");
+	};
+	recorder.start();
+	$("record").textContent = "Stop recording";
+	$("record").classList.add("live");
+}
+
+function saveSession() {
+	localStorage.setItem(STORAGE_KEY, JSON.stringify({ stages: state.stages, selected: state.selected }));
+}
+
+async function restoreSession() {
+	try {
+		const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+		if (saved && Array.isArray(saved.stages)) { state.stages = saved.stages; state.selected = saved.selected; }
+	} catch (error) { }
+	const voice = localStorage.getItem(STORAGE_KEY + ".voice");
+	if (voice) {
+		const bytes = Uint8Array.from(atob(voice), (c) => c.charCodeAt(0));
+		await useVoice(new Blob([bytes], { type: "audio/wav" }), "Last voice line");
+	}
+}
+
+async function start() {
+	const response = await fetch("/api/presets");
+	state.catalogue = await response.json();
+	for (const preset of state.catalogue.presets) {
+		if (preset.id === 0) continue;
+		$("add-preset").insertAdjacentHTML("beforeend", `<option value="${preset.id}" title="${preset.description}">${preset.name}</option>`);
+	}
+	for (const layer of state.catalogue.layers) {
+		$("add-layer").insertAdjacentHTML("beforeend", `<option value="${layer.preset}">${layer.name}</option>`);
+	}
+	for (const id of ["add-preset", "add-layer"]) {
+		$(id).onchange = (event) => {
+			if (!event.target.value) return;
+			state.stages.push(stageFromPreset(Number(event.target.value)));
+			state.selected = state.stages.length - 1;
+			event.target.value = "";
+			changed(true);
+		};
+	}
+	if (!localStorage.getItem(STORAGE_KEY)) {
+		state.stages = [stageFromPreset(16)];
+		state.selected = 0;
+	}
+	await restoreSession();
+	drawChain();
+	drawEditor();
+}
+
+$("record").onclick = toggleRecording;
+$("load").onchange = async (event) => {
+	const file = event.target.files[0];
+	if (file) useVoice(await toVoiceWav(await file.arrayBuffer()), file.name);
+};
+$("play").onclick = () => play(state.processedBuffer);
+$("dry").onclick = () => play(state.dryBuffer);
+$("stop").onclick = stop;
+$("download").onclick = () => {
+	const link = document.createElement("a");
+	link.href = URL.createObjectURL(state.processedBlob);
+	link.download = (state.stages.map((stage) => stage.name).join(" + ") || "dry") + ".wav";
+	link.click();
+};
+document.addEventListener("keydown", (event) => {
+	if (event.code !== "Space" || event.target.tagName === "INPUT" || event.target.tagName === "TEXTAREA") return;
+	event.preventDefault();
+	if (state.source) stop(); else play(state.processedBuffer);
+});
+start().catch((error) => {
+	$("render-status").className = "status error";
+	$("render-status").textContent = "Cannot reach the renderer: " + error.message;
+});
+</script>
+</body>
+</html>
