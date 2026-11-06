@@ -103,6 +103,20 @@ bool ParseBool(const std::string& text, bool& value) {
 	return false;
 }
 
+/// Parses `peak1_hz` / `peak1_db` / `peak1_q` through `peak3_*`. Returns whether the key was a peak key at all; `ok` reports whether its value parsed.
+bool ParsePeakKey(const std::string& key, const std::string& value, AudioEffects::Preset& preset, bool& ok) {
+	if (key.size() < 7 || key.compare(0, 4, "peak") != 0 || key[5] != '_') return false;
+	const int index = key[4] - '1';
+	if (index < 0 || index >= AudioEffects::PEAK_COUNT) return false;
+
+	const std::string field = key.substr(6);
+	if (field == "hz") ok = ParseFloat(value, preset.peakHz[index]);
+	else if (field == "db") ok = ParseFloat(value, preset.peakDb[index]);
+	else if (field == "q") ok = ParseFloat(value, preset.peakQ[index]);
+	else return false;
+	return true;
+}
+
 std::string JoinPath(const std::string& directory, const std::string& fileName) {
 	if (directory.empty()) return fileName;
 	const char tail = directory[directory.size() - 1];
@@ -246,6 +260,31 @@ bool VoicePresetRegistry::ParseContent(const std::string& content, const std::st
 		else if (key == "quantize") ok = ParseInt(value, preset.quantize);
 		else if (key == "downsample") ok = ParseInt(value, preset.downsample);
 		else if (key == "soft_clip") ok = ParseBool(value, preset.softClip);
+		else if (key == "band_low_hz") ok = ParseFloat(value, preset.bandLowHz);
+		else if (key == "band_high_hz") ok = ParseFloat(value, preset.bandHighHz);
+		else if (key == "band_order") ok = ParseInt(value, preset.bandOrder);
+		else if (ParsePeakKey(key, value, preset, ok)) {}
+		else if (key == "tube_ms") ok = ParseFloat(value, preset.tubeMs);
+		else if (key == "tube_feedback") ok = ParseFloat(value, preset.tubeFeedback);
+		else if (key == "tube_mix") ok = ParseFloat(value, preset.tubeMix);
+		else if (key == "compress_threshold_db") ok = ParseFloat(value, preset.compressThresholdDb);
+		else if (key == "compress_ratio") ok = ParseFloat(value, preset.compressRatio);
+		else if (key == "compress_makeup_db") ok = ParseFloat(value, preset.compressMakeupDb);
+		else if (key == "hiss") ok = ParseFloat(value, preset.hiss);
+		else if (key == "crackle") ok = ParseFloat(value, preset.crackle);
+		else if (key == "dropout") ok = ParseFloat(value, preset.dropout);
+		else if (key == "squelch_ms") ok = ParseFloat(value, preset.squelchMs);
+		else if (key == "squelch_level") ok = ParseFloat(value, preset.squelchLevel);
+		else if (key == "chirp_hz") ok = ParseFloat(value, preset.chirpHz);
+		else if (key == "chirp_ms") ok = ParseFloat(value, preset.chirpMs);
+		else if (key == "chirp_level") ok = ParseFloat(value, preset.chirpLevel);
+		else if (key == "chirp_count") ok = ParseInt(value, preset.chirpCount);
+		else if (key == "reverb_mix") ok = ParseFloat(value, preset.reverbMix);
+		else if (key == "reverb_size") ok = ParseFloat(value, preset.reverbSize);
+		else if (key == "reverb_damp") ok = ParseFloat(value, preset.reverbDamp);
+		else if (key == "wobble_hz") ok = ParseFloat(value, preset.wobbleHz);
+		else if (key == "wobble_ms") ok = ParseFloat(value, preset.wobbleMs);
+		else if (key == "limit") ok = ParseBool(value, preset.limit);
 		else continue;
 
 		if (!ok) {
@@ -277,6 +316,34 @@ bool VoicePresetRegistry::ParseContent(const std::string& content, const std::st
 	preset.noise = AudioEffects::ClampFloat(preset.noise, 0.0f, 0.25f);
 	preset.quantize = std::max(0, std::min(32767, preset.quantize));
 	preset.downsample = std::max(1, std::min(32, preset.downsample));
+	preset.bandLowHz = AudioEffects::ClampFloat(preset.bandLowHz, 0.0f, 11000.0f);
+	preset.bandHighHz = AudioEffects::ClampFloat(preset.bandHighHz, 0.0f, 11000.0f);
+	preset.bandOrder = std::max(1, std::min(2, preset.bandOrder));
+	for (int p = 0; p < AudioEffects::PEAK_COUNT; ++p) {
+		preset.peakHz[p] = AudioEffects::ClampFloat(preset.peakHz[p], 0.0f, 11000.0f);
+		preset.peakDb[p] = AudioEffects::ClampFloat(preset.peakDb[p], -24.0f, 24.0f);
+		preset.peakQ[p] = AudioEffects::ClampFloat(preset.peakQ[p], 0.1f, 24.0f);
+	}
+	preset.tubeMs = AudioEffects::ClampFloat(preset.tubeMs, 0.0f, 30.0f);
+	preset.tubeFeedback = AudioEffects::ClampFloat(preset.tubeFeedback, 0.0f, 0.95f);
+	preset.tubeMix = AudioEffects::ClampFloat(preset.tubeMix, 0.0f, 1.0f);
+	preset.compressThresholdDb = AudioEffects::ClampFloat(preset.compressThresholdDb, -60.0f, 0.0f);
+	preset.compressRatio = AudioEffects::ClampFloat(preset.compressRatio, 1.0f, 40.0f);
+	preset.compressMakeupDb = AudioEffects::ClampFloat(preset.compressMakeupDb, -24.0f, 36.0f);
+	preset.hiss = AudioEffects::ClampFloat(preset.hiss, 0.0f, 0.25f);
+	preset.crackle = AudioEffects::ClampFloat(preset.crackle, 0.0f, 1.0f);
+	preset.dropout = AudioEffects::ClampFloat(preset.dropout, 0.0f, 1.0f);
+	preset.squelchMs = AudioEffects::ClampFloat(preset.squelchMs, 0.0f, 1000.0f);
+	preset.squelchLevel = AudioEffects::ClampFloat(preset.squelchLevel, 0.0f, 1.0f);
+	preset.chirpHz = AudioEffects::ClampFloat(preset.chirpHz, 0.0f, 8000.0f);
+	preset.chirpMs = AudioEffects::ClampFloat(preset.chirpMs, 0.0f, 500.0f);
+	preset.chirpLevel = AudioEffects::ClampFloat(preset.chirpLevel, 0.0f, 1.0f);
+	preset.chirpCount = std::max(1, std::min(4, preset.chirpCount));
+	preset.reverbMix = AudioEffects::ClampFloat(preset.reverbMix, 0.0f, 1.0f);
+	preset.reverbSize = AudioEffects::ClampFloat(preset.reverbSize, 0.0f, 1.0f);
+	preset.reverbDamp = AudioEffects::ClampFloat(preset.reverbDamp, 0.0f, 1.0f);
+	preset.wobbleHz = AudioEffects::ClampFloat(preset.wobbleHz, 0.0f, 40.0f);
+	preset.wobbleMs = AudioEffects::ClampFloat(preset.wobbleMs, 0.0f, 20.0f);
 	return true;
 }
 
