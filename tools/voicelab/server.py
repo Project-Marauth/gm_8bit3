@@ -1,138 +1,77 @@
-"""Voice lab: a local page for auditioning and tuning eightbit presets without building or loading the server DLL.
+"""Voice lab: a local page for hearing and tuning eightbit presets live, without building or loading the server DLL.
 
-Run `python tools/voicelab/server.py` from the repository root (or anywhere) and open http://127.0.0.1:8765.
-The page records or loads a voice line and plays it back through the module's real effect engine: the server
-compiles tools/voicelab/voicelab.cpp against source/ with a local C++17 compiler (g++ by default, override with
-the CXX environment variable) and rebuilds it whenever the engine sources change.
+Run `python tools/voicelab/server.py` and open http://127.0.0.1:8765. The audio runs in the browser on engine.wasm,
+the module's own effect engine compiled to WebAssembly; this server only hands out the page. When `ziglang` is
+installed (`pip install ziglang`) it rebuilds engine.wasm whenever the engine sources are newer, so edits to
+source/audio_effects.h can be heard on the next page load.
 """
 
-import base64
-import json
+import importlib.util
 import os
-import shutil
-import subprocess
 import sys
-import tempfile
-import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parent.parent
-SOURCES = [HERE / "voicelab.cpp", ROOT / "source" / "voice_presets.cpp"]
-HEADERS = [ROOT / "source" / "audio_effects.h", ROOT / "source" / "voice_presets.h"]
-BUILD = HERE / "build"
-BINARY = BUILD / ("voicelab.exe" if os.name == "nt" else "voicelab")
+sys.path.insert(0, str(HERE))
+import build_wasm  # noqa: E402
+
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("VOICELAB_PORT", "8765"))
-MAX_UPLOAD = 32 * 1024 * 1024
-
-build_lock = threading.Lock()
+SERVED = {"index.html", "lab.js", "worklet.js", "engine.wasm"}
 
 
-def needs_build():
-    """Returns whether the renderer is missing or older than any engine source."""
-    if not BINARY.exists():
-        return True
-    built = BINARY.stat().st_mtime
-    return any(path.stat().st_mtime > built for path in SOURCES + HEADERS)
+def refresh_engine():
+    """Rebuilds engine.wasm when it is stale and the Zig toolchain is available; otherwise keeps the committed one."""
+    if not build_wasm.is_stale():
+        return
+    if importlib.util.find_spec("ziglang") is None:
+        print("[voicelab] engine.wasm is older than the engine sources; `pip install ziglang` to rebuild it", flush=True)
+        return
+    try:
+        build_wasm.build()
+        print("[voicelab] rebuilt engine.wasm", flush=True)
+    except RuntimeError as error:
+        print(f"[voicelab] {error}", file=sys.stderr, flush=True)
 
 
-def build():
-    """Compiles the renderer when the engine changed, so edits to audio_effects.h show up on the next render."""
-    with build_lock:
-        if not needs_build():
-            return
-        compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")
-        if not compiler:
-            raise RuntimeError("no C++ compiler found; install g++ or set CXX")
-        BUILD.mkdir(exist_ok=True)
-        command = [compiler, "-std=c++17", "-O2", "-I", str(ROOT / "source"), *map(str, SOURCES), "-o", str(BINARY)]
-        print("[voicelab] building:", " ".join(command), flush=True)
-        result = subprocess.run(command, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise RuntimeError("renderer build failed:\n" + result.stderr)
+class Handler(SimpleHTTPRequestHandler):
+    extensions_map = {**SimpleHTTPRequestHandler.extensions_map, ".wasm": "application/wasm", ".js": "text/javascript"}
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=str(HERE), **kwargs)
 
-def presets():
-    """Returns the built-in catalogue, each preset with its full .gvox text."""
-    build()
-    result = subprocess.run([str(BINARY), "list"], capture_output=True, text=True, check=True)
-    return result.stdout
-
-
-def render(payload):
-    """Renders a chain over the posted WAV and returns the processed WAV bytes."""
-    build()
-    with tempfile.TemporaryDirectory(prefix="voicelab-") as work:
-        work = Path(work)
-        source = work / "in.wav"
-        output = work / "out.wav"
-        source.write_bytes(base64.b64decode(payload["wav"]))
-
-        stages = []
-        for index, stage in enumerate(payload.get("stages", [])):
-            if isinstance(stage, dict) and isinstance(stage.get("gvox"), str):
-                path = work / f"stage{index}.gvox"
-                path.write_text(stage["gvox"], encoding="utf-8")
-                stages.append(str(path))
-            elif isinstance(stage, int):
-                stages.append(f"builtin:{stage}")
-
-        result = subprocess.run([str(BINARY), "render", str(source), str(output), *stages], capture_output=True, text=True)
-        if result.returncode != 0:
-            raise ValueError(result.stderr.strip() or "render failed")
-        return output.read_bytes()
-
-
-class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
-    def reply(self, status, body, content_type):
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
+    def end_headers(self):
         self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
-
-    def fail(self, status, message):
-        self.reply(status, json.dumps({"error": message}).encode(), "application/json")
+        super().end_headers()
 
     def do_GET(self):
-        if self.path in ("/", "/index.html"):
-            self.reply(200, (HERE / "index.html").read_bytes(), "text/html; charset=utf-8")
-        elif self.path == "/api/presets":
-            try:
-                self.reply(200, presets().encode(), "application/json")
-            except Exception as error:
-                self.fail(500, str(error))
-        else:
-            self.fail(404, "not found")
+        name = self.path.split("?", 1)[0].lstrip("/") or "index.html"
+        if name not in SERVED:
+            self.send_error(404)
+            return
+        if name in ("index.html", "engine.wasm"):
+            refresh_engine()
+        self.path = "/" + name
+        super().do_GET()
 
-    def do_POST(self):
-        if self.path != "/api/render":
-            return self.fail(404, "not found")
-        length = int(self.headers.get("Content-Length", "0"))
-        if length <= 0 or length > MAX_UPLOAD:
-            return self.fail(413, "upload too large")
-        try:
-            payload = json.loads(self.rfile.read(length))
-            self.reply(200, render(payload), "audio/wav")
-        except ValueError as error:
-            self.fail(400, str(error))
-        except Exception as error:
-            self.fail(500, str(error))
+
+class Server(ThreadingHTTPServer):
+    """Refuses to share the port: on Windows address reuse lets a second lab bind the same port and silently shadow the first."""
+
+    allow_reuse_address = os.name != "nt"
 
 
 def main():
+    refresh_engine()
     try:
-        build()
-    except RuntimeError as error:
-        print(f"[voicelab] {error}", file=sys.stderr)
+        server = Server((HOST, PORT), Handler)
+    except OSError as error:
+        print(f"[voicelab] cannot listen on {HOST}:{PORT} ({error}); is another voice lab running? Set VOICELAB_PORT to use another port.", file=sys.stderr)
         return 1
-    server = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"[voicelab] open http://{HOST}:{PORT}", flush=True)
     try:
         server.serve_forever()

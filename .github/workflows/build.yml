@@ -45,6 +45,8 @@ jobs:
           g++ -std=c++17 -O2 -Isource tools/voicelab/voicelab.cpp source/voice_presets.cpp -o voicelab
           ./voicelab list > presets.json
           python3 -c "import json; d = json.load(open('presets.json')); assert len(d['presets']) > 27"
+          pip install --quiet ziglang
+          python3 tools/voicelab/build_wasm.py
 
       - name: Generate project
         run: ./premake5 --gmcommon=garrysmod_common gmake2
