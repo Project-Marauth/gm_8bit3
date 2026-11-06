@@ -621,7 +621,7 @@ LUA_FUNCTION_STATIC(eightbit_get_effect_flags) {
 
 LUA_FUNCTION_STATIC(eightbit_get_preset_directory) { LUA->PushString(g_eightbit->presets.Directory().c_str()); return 1; }
 LUA_FUNCTION_STATIC(eightbit_is_hook_available) { LUA->PushBool(g_voiceHookAvailable); return 1; }
-LUA_FUNCTION_STATIC(eightbit_get_version) { LUA->PushString("2.1.2"); return 1; }
+LUA_FUNCTION_STATIC(eightbit_get_version) { LUA->PushString("2.1.3"); return 1; }
 
 GMOD_MODULE_OPEN() {
 	g_eightbit = new EightbitState();

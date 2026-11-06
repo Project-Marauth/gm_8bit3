@@ -85,6 +85,11 @@ jobs:
             echo "::error::the 32-bit DLL must link libtier0_srv.so, the name 32-bit srcds ships; it links '$tier0'"
             status=1
           fi
+          missing=$(nm -D --undefined-only projects/linux/gmake/x86/ReleaseWithSymbols/gmsv_eightbit_linux.dll | awk '{print $NF}' | grep -E '^(LOG_|LoggingSystem_)' || true)
+          if [ -n "$missing" ]; then
+            echo "::error::the 32-bit DLL imports tier0 logging symbols that 32-bit srcds does not export: $missing"
+            status=1
+          fi
           exit $status
 
       - uses: actions/upload-artifact@v4
