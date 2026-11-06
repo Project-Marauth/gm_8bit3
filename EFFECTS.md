@@ -48,6 +48,7 @@ Custom `.gvox` ids (1000 to 65534) fit in the base bits and take layers the same
 | 24 | `EFF_PA_SYSTEM` | Ceiling speakers in a large hall |
 | 25 | `EFF_THROUGH_WALL` | Only the low end gets through |
 | 26 | `EFF_UNDERWATER` | Dark, wavering, swallowed by the water |
+| 27 | `EFF_COMBINE_GRUNT` | Heavy field vocoder: almost no dry voice left (2.2.0) |
 
 Ids 0 to 14 are unchanged. Their pitch shift is now continuous across packets instead of restarting every packet, so pitched presets (`EFF_COMB`, `EFF_COMBO`, `EFF_CHIPMUNK` and so on) lose their buzz at the packet rate but otherwise sound the same.
 
@@ -81,9 +82,14 @@ Every field is optional and off by default, so existing presets are unaffected.
 | `chirp_hz`, `chirp_ms`, `chirp_level`, `chirp_count` | Hz, ms, 0 to 1, 1 to 4 | Key-up beeps |
 | `reverb_mix`, `reverb_size`, `reverb_damp` | 0 to 1 each | Small room reverb |
 | `wobble_hz`, `wobble_ms` | 0 to 40, 0 to 20 | Vibrato |
+| `vocoder_mix` | 0 to 1 | Channel vocoder, blended over the dry voice (see below) |
+| `vocoder_bands`, `vocoder_low_hz`, `vocoder_high_hz`, `vocoder_width` | 4 to 32, Hz, Hz, 0.25 to 4 | Band count, range and width |
+| `vocoder_attack_ms`, `vocoder_release_ms` | 0.1 to 50, 1 to 200 | How fast each band follows the voice |
+| `vocoder_noise`, `vocoder_buzz`, `vocoder_self`, `vocoder_buzz_hz` | 0 to 1 each, 20 to 1000 Hz | Carrier blend |
+| `vocoder_gain` | 0 to 8 | Vocoder output level |
 | `limit` | boolean | Soft output limiter |
 
-Signal order inside one preset: pitch, wobble, one-pole filters, ring modulation, tube, downsample, drive, quantise, compressor, dropout, hiss/crackle/squelch/chirp, band and peaks, echo, reverb, white noise and gain, limiter.
+Signal order inside one preset: pitch, vocoder, wobble, one-pole filters, ring modulation, tube, downsample, drive, quantise, compressor, dropout, hiss/crackle/squelch/chirp, band and peaks, echo, reverb, white noise and gain, limiter.
 
 Example, a sealed diving helmet:
 
@@ -103,6 +109,30 @@ reverb_size=0.2
 reverb_damp=0.8
 limit=true
 ```
+
+## The Combine vocoder (2.2.0)
+
+There is no primary source for how Valve processed the HL2 Combine voices, but every community recreation of the soldier voice is a channel vocoder (typically FL Studio's Vocodex, "Unpitched" preset, around 23 bands, upper mids dipped), and Half-Life: Alyx's grunts lean on a vocoder much harder. The 2.1 modulators had no vocoder at all, only filters, a comb, clipping and compression, which is why they read as a compressed radio voice.
+
+The vocoder stage splits the voice into `vocoder_bands` log-spaced bands between `vocoder_low_hz` and `vocoder_high_hz`, follows each band's envelope, and imposes those envelopes on a synthetic carrier split through matching bands. The carrier is a blend of:
+
+- `vocoder_noise`: white noise. Unpitched and whispered; the classic Combine soldier texture.
+- `vocoder_buzz`: a sawtooth at `vocoder_buzz_hz`. A monotone robot.
+- `vocoder_self`: the voice hard-clipped into a square wave. Follows the speaker's own pitch, so it stays expressive but gritty.
+
+Each carrier band is normalised by its own level, so switching carriers changes texture, not loudness. More bands and a short release keep words intelligible; fewer bands and a long release sound more machine. `vocoder_mix` blends the result over the dry voice: around 0.45 still sounds like a person in a mask (`EFF_METROCOP_MODULATOR`), 0.75 is the Overwatch soldier, 0.9 and up is `EFF_COMBINE_GRUNT`.
+
+## Voice lab
+
+`tools/voicelab` auditions presets without building or loading the DLL. It compiles `tools/voicelab/voicelab.cpp` against this repository's own `source/` with a local C++17 compiler, so what it plays is the module's engine, packet by packet, not an imitation.
+
+```sh
+python tools/voicelab/server.py
+```
+
+Open http://127.0.0.1:8765, record a line or load an audio file, and build a chain from the built-in presets and layers. Every field of every stage has a slider; each change re-renders in under 100 ms and plays back, with a dry A/B, a spectrogram, and WAV download. "Copy .gvox" exports the stage as a preset file the server loads unchanged, and the renderer rebuilds itself when `source/audio_effects.h` changes, so engine edits can be heard the same way. Needs Python 3 and `g++` or `clang++` on the PATH (or `CXX`). The Opus round trip the server adds is not simulated.
+
+The renderer also works on its own: `voicelab list` prints every built-in as `.gvox`, and `voicelab render in.wav out.wav builtin:16 my_radio.gvox` renders a chain over a 24 kHz mono 16-bit WAV.
 
 ## Performance
 
