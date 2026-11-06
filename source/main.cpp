@@ -621,7 +621,7 @@ LUA_FUNCTION_STATIC(eightbit_get_effect_flags) {
 
 LUA_FUNCTION_STATIC(eightbit_get_preset_directory) { LUA->PushString(g_eightbit->presets.Directory().c_str()); return 1; }
 LUA_FUNCTION_STATIC(eightbit_is_hook_available) { LUA->PushBool(g_voiceHookAvailable); return 1; }
-LUA_FUNCTION_STATIC(eightbit_get_version) { LUA->PushString("2.1.3"); return 1; }
+LUA_FUNCTION_STATIC(eightbit_get_version) { LUA->PushString("2.2.0"); return 1; }
 
 GMOD_MODULE_OPEN() {
 	g_eightbit = new EightbitState();
@@ -732,6 +732,7 @@ GMOD_MODULE_OPEN() {
 	AddNumber(LUA, "EFF_PA_SYSTEM", AudioEffects::EFF_PA_SYSTEM);
 	AddNumber(LUA, "EFF_THROUGH_WALL", AudioEffects::EFF_THROUGH_WALL);
 	AddNumber(LUA, "EFF_UNDERWATER", AudioEffects::EFF_UNDERWATER);
+	AddNumber(LUA, "EFF_COMBINE_GRUNT", AudioEffects::EFF_COMBINE_GRUNT);
 	AddNumber(LUA, "EFF_BUILTIN_LAST", AudioEffects::EFF_BUILTIN_LAST);
 	AddNumber(LUA, "EFF_BASE_MASK", AudioEffects::EFF_BASE_MASK);
 	AddNumber(LUA, "EFF_FLAG_MASK", AudioEffects::EFF_FLAG_MASK);

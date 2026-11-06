@@ -285,6 +285,18 @@ bool VoicePresetRegistry::ParseContent(const std::string& content, const std::st
 		else if (key == "wobble_hz") ok = ParseFloat(value, preset.wobbleHz);
 		else if (key == "wobble_ms") ok = ParseFloat(value, preset.wobbleMs);
 		else if (key == "limit") ok = ParseBool(value, preset.limit);
+		else if (key == "vocoder_mix") ok = ParseFloat(value, preset.vocoderMix);
+		else if (key == "vocoder_bands") ok = ParseInt(value, preset.vocoderBands);
+		else if (key == "vocoder_low_hz") ok = ParseFloat(value, preset.vocoderLowHz);
+		else if (key == "vocoder_high_hz") ok = ParseFloat(value, preset.vocoderHighHz);
+		else if (key == "vocoder_width") ok = ParseFloat(value, preset.vocoderWidth);
+		else if (key == "vocoder_attack_ms") ok = ParseFloat(value, preset.vocoderAttackMs);
+		else if (key == "vocoder_release_ms") ok = ParseFloat(value, preset.vocoderReleaseMs);
+		else if (key == "vocoder_noise") ok = ParseFloat(value, preset.vocoderNoise);
+		else if (key == "vocoder_buzz") ok = ParseFloat(value, preset.vocoderBuzz);
+		else if (key == "vocoder_self") ok = ParseFloat(value, preset.vocoderSelf);
+		else if (key == "vocoder_buzz_hz") ok = ParseFloat(value, preset.vocoderBuzzHz);
+		else if (key == "vocoder_gain") ok = ParseFloat(value, preset.vocoderGain);
 		else continue;
 
 		if (!ok) {
@@ -344,6 +356,18 @@ bool VoicePresetRegistry::ParseContent(const std::string& content, const std::st
 	preset.reverbDamp = AudioEffects::ClampFloat(preset.reverbDamp, 0.0f, 1.0f);
 	preset.wobbleHz = AudioEffects::ClampFloat(preset.wobbleHz, 0.0f, 40.0f);
 	preset.wobbleMs = AudioEffects::ClampFloat(preset.wobbleMs, 0.0f, 20.0f);
+	preset.vocoderMix = AudioEffects::ClampFloat(preset.vocoderMix, 0.0f, 1.0f);
+	preset.vocoderBands = std::max(4, std::min(AudioEffects::VOCODER_MAX_BANDS, preset.vocoderBands));
+	preset.vocoderLowHz = AudioEffects::ClampFloat(preset.vocoderLowHz, 40.0f, 9000.0f);
+	preset.vocoderHighHz = AudioEffects::ClampFloat(preset.vocoderHighHz, 60.0f, 10800.0f);
+	preset.vocoderWidth = AudioEffects::ClampFloat(preset.vocoderWidth, 0.25f, 4.0f);
+	preset.vocoderAttackMs = AudioEffects::ClampFloat(preset.vocoderAttackMs, 0.1f, 50.0f);
+	preset.vocoderReleaseMs = AudioEffects::ClampFloat(preset.vocoderReleaseMs, 1.0f, 200.0f);
+	preset.vocoderNoise = AudioEffects::ClampFloat(preset.vocoderNoise, 0.0f, 1.0f);
+	preset.vocoderBuzz = AudioEffects::ClampFloat(preset.vocoderBuzz, 0.0f, 1.0f);
+	preset.vocoderSelf = AudioEffects::ClampFloat(preset.vocoderSelf, 0.0f, 1.0f);
+	preset.vocoderBuzzHz = AudioEffects::ClampFloat(preset.vocoderBuzzHz, 20.0f, 1000.0f);
+	preset.vocoderGain = AudioEffects::ClampFloat(preset.vocoderGain, 0.0f, 8.0f);
 	return true;
 }
 

@@ -44,7 +44,8 @@ enum EffectId {
 	EFF_PA_SYSTEM = 24,
 	EFF_THROUGH_WALL = 25,
 	EFF_UNDERWATER = 26,
-	EFF_BUILTIN_LAST = EFF_UNDERWATER,
+	EFF_COMBINE_GRUNT = 27,
+	EFF_BUILTIN_LAST = EFF_COMBINE_GRUNT,
 	CUSTOM_ID_MIN = 1000,
 	CUSTOM_ID_MAX = 65534
 };
@@ -91,6 +92,9 @@ inline const LayerInfo* Layers(int& count) {
 }
 
 constexpr int PEAK_COUNT = 3;
+
+/// Upper bound on vocoder bands. Each band costs two biquads and two envelope followers per sample.
+constexpr int VOCODER_MAX_BANDS = 32;
 
 /// The compressor works out its gain once per this many samples and ramps linearly in between, which keeps the per-sample cost to an envelope follower and a multiply. Must be a power of two.
 constexpr int COMPRESSOR_CONTROL_SAMPLES = 16;
@@ -161,6 +165,19 @@ struct Preset {
 	float wobbleHz = 0.0f;
 	float wobbleMs = 0.0f;
 	bool limit = false;
+
+	float vocoderMix = 0.0f;
+	int vocoderBands = 16;
+	float vocoderLowHz = 150.0f;
+	float vocoderHighHz = 4000.0f;
+	float vocoderWidth = 1.0f;
+	float vocoderAttackMs = 2.0f;
+	float vocoderReleaseMs = 20.0f;
+	float vocoderNoise = 0.0f;
+	float vocoderBuzz = 1.0f;
+	float vocoderSelf = 0.0f;
+	float vocoderBuzzHz = 110.0f;
+	float vocoderGain = 1.0f;
 };
 
 struct Biquad {
@@ -228,6 +245,12 @@ struct RuntimeState {
 	Biquad bandHigh[2];
 	Biquad peaks[PEAK_COUNT];
 	Biquad noiseShape;
+
+	Biquad vocoderAnalysis[VOCODER_MAX_BANDS];
+	Biquad vocoderSynthesis[VOCODER_MAX_BANDS];
+	float vocoderVoiceEnvelope[VOCODER_MAX_BANDS] = {};
+	float vocoderCarrierEnvelope[VOCODER_MAX_BANDS] = {};
+	float vocoderBuzzPhase = 0.0f;
 
 	float compressorEnvelope = 0.0f;
 	float compressorGain = 1.0f;
@@ -324,6 +347,19 @@ inline void SetPeaking(Biquad& filter, float hz, float db, float q, int sampleRa
 	filter.a2 = (1.0f - alpha / a) / a0;
 }
 
+inline void SetBandpass(Biquad& filter, float hz, float q, int sampleRate) {
+	const float pi = 3.14159265358979323846f;
+	const float w0 = 2.0f * pi * ClampFloat(hz, 20.0f, sampleRate * 0.45f) / static_cast<float>(sampleRate);
+	const float cosw = std::cos(w0);
+	const float alpha = std::sin(w0) / (2.0f * q);
+	const float a0 = 1.0f + alpha;
+	filter.b0 = alpha / a0;
+	filter.b1 = 0.0f;
+	filter.b2 = -alpha / a0;
+	filter.a1 = (-2.0f * cosw) / a0;
+	filter.a2 = (1.0f - alpha) / a0;
+}
+
 inline float ReadFractional(const std::vector<float>& buffer, size_t write, float delay) {
 	const size_t size = buffer.size();
 	const float position = static_cast<float>(write) - delay + static_cast<float>(size);
@@ -409,7 +445,9 @@ inline Preset MakeBuiltin(int id, float legacyGain, int legacyCrush, int legacyD
 		break;
 	case EFF_METROCOP_MODULATOR:
 		p.key = "metrocop_modulator"; p.name = "Metrocop modulator";
-		p.description = "Civil Protection mask vocoder: honking respirator cavity, crushed radio band and a static burst on key-up";
+		p.description = "Civil Protection mask: a 16-band vocoder on the officer's own voice under the dry voice, respirator honk, crushed radio band, static on key-up";
+		p.vocoderMix = 0.45f; p.vocoderBands = 16; p.vocoderLowHz = 180.0f; p.vocoderHighHz = 3600.0f;
+		p.vocoderNoise = 0.3f; p.vocoderBuzz = 0.0f; p.vocoderSelf = 0.7f; p.vocoderReleaseMs = 18.0f;
 		p.pitch = 0.95f; p.tubeMs = 0.75f; p.tubeFeedback = 0.42f; p.tubeMix = 0.45f;
 		p.drive = 2.2f; p.softClip = true; p.quantize = 48;
 		p.compressThresholdDb = -26.0f; p.compressRatio = 6.0f; p.compressMakeupDb = 9.0f;
@@ -423,8 +461,11 @@ inline Preset MakeBuiltin(int id, float legacyGain, int legacyCrush, int legacyD
 		break;
 	case EFF_OVERWATCH_MODULATOR:
 		p.key = "overwatch_modulator"; p.name = "Overwatch modulator";
-		p.description = "Overwatch soldier: lowered, synthetic and heavily compressed, with a two-tone chirp on key-up";
-		p.pitch = 0.88f; p.ringFrequency = 62.0f; p.ringMix = 0.12f;
+		p.description = "Overwatch soldier: a 22-band unpitched vocoder over a lowered voice, heavily compressed, with a two-tone chirp on key-up";
+		p.vocoderMix = 0.75f; p.vocoderBands = 22; p.vocoderLowHz = 160.0f; p.vocoderHighHz = 3800.0f;
+		p.vocoderNoise = 0.55f; p.vocoderBuzz = 0.0f; p.vocoderSelf = 0.45f; p.vocoderReleaseMs = 16.0f;
+		p.peakHz[2] = 2900.0f; p.peakDb[2] = -4.0f; p.peakQ[2] = 1.2f;
+		p.pitch = 0.92f; p.ringFrequency = 62.0f; p.ringMix = 0.08f;
 		p.tubeMs = 1.4f; p.tubeFeedback = 0.55f; p.tubeMix = 0.5f;
 		p.drive = 3.0f; p.softClip = true; p.quantize = 160; p.downsample = 2;
 		p.compressThresholdDb = -28.0f; p.compressRatio = 8.0f; p.compressMakeupDb = 11.0f;
@@ -531,6 +572,21 @@ inline Preset MakeBuiltin(int id, float legacyGain, int legacyCrush, int legacyD
 		p.reverbMix = 0.25f; p.reverbSize = 0.6f; p.reverbDamp = 0.9f;
 		p.limit = true;
 		break;
+	case EFF_COMBINE_GRUNT:
+		p.key = "combine_grunt"; p.name = "Combine grunt vocoder";
+		p.description = "Heavy field vocoder: 24 bands on a low buzz, noise and the voice's own harmonics, almost no dry voice, crushed and clipped";
+		p.vocoderMix = 0.92f; p.vocoderBands = 24; p.vocoderLowHz = 140.0f; p.vocoderHighHz = 4200.0f;
+		p.vocoderNoise = 0.3f; p.vocoderBuzz = 0.4f; p.vocoderSelf = 0.3f; p.vocoderBuzzHz = 92.0f;
+		p.vocoderReleaseMs = 14.0f; p.vocoderGain = 1.2f;
+		p.pitch = 0.9f; p.drive = 3.6f; p.softClip = true; p.quantize = 120;
+		p.compressThresholdDb = -26.0f; p.compressRatio = 8.0f; p.compressMakeupDb = 10.0f;
+		p.hiss = 0.005f; p.crackle = 0.1f;
+		p.bandLowHz = 220.0f; p.bandHighHz = 3600.0f; p.bandOrder = 2;
+		p.peakHz[0] = 1000.0f; p.peakDb[0] = 5.0f; p.peakQ[0] = 1.8f;
+		p.peakHz[1] = 2900.0f; p.peakDb[1] = -4.0f; p.peakQ[1] = 1.2f;
+		p.squelchMs = 80.0f; p.squelchLevel = 0.06f; p.gain = 1.4f;
+		p.limit = true;
+		break;
 	default:
 		p.id = EFF_NONE; p.key = "none"; p.name = "No effect"; p.description = "Unmodified voice";
 		break;
@@ -566,6 +622,61 @@ inline void ApplyPitch(float* audio, int samples, float ratio, int sampleRate, R
 		if (state.pitchDelay >= window) state.pitchDelay -= window;
 		if (state.pitchDelay < 0.0f) state.pitchDelay += window;
 		state.pitchWrite = (state.pitchWrite + 1) % size;
+	}
+}
+
+/// A channel vocoder: the voice is split into log-spaced bands, each band's envelope is followed, and a synthetic carrier split through matching bands is shaped by those envelopes. The carrier blends white noise (unpitched, whispered), a fixed sawtooth buzz (monotone robot) and the voice hard-clipped into a square wave (pitch-following, gritty). Each carrier band is normalised by its own envelope so the output level follows the voice whatever the carrier is.
+inline void ApplyVocoder(float* audio, int samples, const Preset& preset, int sampleRate, RuntimeState& state) {
+	if (preset.vocoderMix <= 0.0f) return;
+
+	const int bands = std::max(4, std::min(VOCODER_MAX_BANDS, preset.vocoderBands));
+	const float low = ClampFloat(preset.vocoderLowHz, 40.0f, sampleRate * 0.4f);
+	const float high = ClampFloat(preset.vocoderHighHz, low * 1.5f, sampleRate * 0.45f);
+	const float ratio = std::pow(high / low, 1.0f / static_cast<float>(bands - 1));
+	const float root = std::sqrt(ratio);
+	const float q = ClampFloat(1.0f / ((root - 1.0f / root) * ClampFloat(preset.vocoderWidth, 0.25f, 4.0f)), 0.5f, 40.0f);
+
+	float centre = low;
+	for (int b = 0; b < bands; ++b) {
+		SetBandpass(state.vocoderAnalysis[b], centre, q, sampleRate);
+		SetBandpass(state.vocoderSynthesis[b], centre, q, sampleRate);
+		centre *= ratio;
+	}
+
+	const float attack = 1.0f - std::exp(-1.0f / (ClampFloat(preset.vocoderAttackMs, 0.1f, 50.0f) * 0.001f * static_cast<float>(sampleRate)));
+	const float release = 1.0f - std::exp(-1.0f / (ClampFloat(preset.vocoderReleaseMs, 1.0f, 200.0f) * 0.001f * static_cast<float>(sampleRate)));
+	const float carrierFollow = 1.0f - std::exp(-1.0f / (0.01f * static_cast<float>(sampleRate)));
+	const float noiseWeight = ClampFloat(preset.vocoderNoise, 0.0f, 1.0f);
+	const float buzzWeight = ClampFloat(preset.vocoderBuzz, 0.0f, 1.0f);
+	const float selfWeight = ClampFloat(preset.vocoderSelf, 0.0f, 1.0f);
+	const float buzzStep = ClampFloat(preset.vocoderBuzzHz, 20.0f, 1000.0f) / static_cast<float>(sampleRate);
+	const float mix = ClampFloat(preset.vocoderMix, 0.0f, 1.0f);
+	const float gain = ClampFloat(preset.vocoderGain, 0.0f, 8.0f) * 0.4f;
+
+	for (int i = 0; i < samples; ++i) {
+		const float voice = audio[i];
+		float carrier = 0.0f;
+		if (noiseWeight > 0.0f) carrier += NextRandom(state) * noiseWeight;
+		if (buzzWeight > 0.0f) {
+			carrier += (2.0f * state.vocoderBuzzPhase - 1.0f) * buzzWeight;
+			state.vocoderBuzzPhase += buzzStep;
+			if (state.vocoderBuzzPhase >= 1.0f) state.vocoderBuzzPhase -= 1.0f;
+		}
+		if (selfWeight > 0.0f) carrier += ClampFloat(voice * 0.01f, -1.0f, 1.0f) * selfWeight;
+
+		float wet = 0.0f;
+		for (int b = 0; b < bands; ++b) {
+			const float level = std::fabs(state.vocoderAnalysis[b].Process(voice));
+			float& envelope = state.vocoderVoiceEnvelope[b];
+			envelope += (level > envelope ? attack : release) * (level - envelope);
+
+			const float band = state.vocoderSynthesis[b].Process(carrier);
+			float& carrierEnvelope = state.vocoderCarrierEnvelope[b];
+			carrierEnvelope += carrierFollow * (std::fabs(band) - carrierEnvelope);
+			wet += band / (carrierEnvelope + 1e-4f) * envelope;
+		}
+
+		audio[i] = voice * (1.0f - mix) + wet * gain * mix;
 	}
 }
 
@@ -826,6 +937,7 @@ inline void ApplyPreset(const Preset& preset, int16_t* audio, int samples, int s
 	for (int i = 0; i < samples; ++i) x[i] = static_cast<float>(audio[i]);
 
 	ApplyPitch(x, samples, ClampFloat(preset.pitch, 0.5f, 2.0f), sampleRate, state);
+	ApplyVocoder(x, samples, preset, sampleRate, state);
 	ApplyWobble(x, samples, preset, sampleRate, state);
 
 	if (preset.highpassHz > 0.0f) {
