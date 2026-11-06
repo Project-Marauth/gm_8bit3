@@ -42,6 +42,8 @@ std::string ToGvox(const AudioEffects::Preset& p) {
 		{ "vocoder_release_ms", p.vocoderReleaseMs }, { "vocoder_noise", p.vocoderNoise },
 		{ "vocoder_buzz", p.vocoderBuzz }, { "vocoder_self", p.vocoderSelf },
 		{ "vocoder_buzz_hz", p.vocoderBuzzHz }, { "vocoder_gain", p.vocoderGain },
+		{ "vocoder_formant", p.vocoderFormant }, { "vocoder_flatten", p.vocoderFlatten },
+		{ "vocoder_smooth", p.vocoderSmooth },
 		{ "wobble_hz", p.wobbleHz }, { "wobble_ms", p.wobbleMs },
 		{ "highpass_hz", p.highpassHz }, { "lowpass_hz", p.lowpassHz },
 		{ "ring_frequency_hz", p.ringFrequency }, { "ring_mix", p.ringMix },

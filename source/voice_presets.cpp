@@ -297,6 +297,9 @@ bool VoicePresetRegistry::ParseContent(const std::string& content, const std::st
 		else if (key == "vocoder_self") ok = ParseFloat(value, preset.vocoderSelf);
 		else if (key == "vocoder_buzz_hz") ok = ParseFloat(value, preset.vocoderBuzzHz);
 		else if (key == "vocoder_gain") ok = ParseFloat(value, preset.vocoderGain);
+		else if (key == "vocoder_formant") ok = ParseFloat(value, preset.vocoderFormant);
+		else if (key == "vocoder_flatten") ok = ParseFloat(value, preset.vocoderFlatten);
+		else if (key == "vocoder_smooth") ok = ParseFloat(value, preset.vocoderSmooth);
 		else continue;
 
 		if (!ok) {
@@ -368,6 +371,9 @@ bool VoicePresetRegistry::ParseContent(const std::string& content, const std::st
 	preset.vocoderSelf = AudioEffects::ClampFloat(preset.vocoderSelf, 0.0f, 1.0f);
 	preset.vocoderBuzzHz = AudioEffects::ClampFloat(preset.vocoderBuzzHz, 20.0f, 1000.0f);
 	preset.vocoderGain = AudioEffects::ClampFloat(preset.vocoderGain, 0.0f, 8.0f);
+	preset.vocoderFormant = AudioEffects::ClampFloat(preset.vocoderFormant, 0.5f, 2.0f);
+	preset.vocoderFlatten = AudioEffects::ClampFloat(preset.vocoderFlatten, 0.0f, 1.0f);
+	preset.vocoderSmooth = AudioEffects::ClampFloat(preset.vocoderSmooth, 0.0f, 1.0f);
 	return true;
 }
 
